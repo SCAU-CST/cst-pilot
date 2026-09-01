@@ -1,0 +1,31 @@
+{
+  "_comment": "复制为 agent\\home\\models.json 并填入自己的网关地址与 API KEY。此文件含密钥，已被 .gitignore 排除，切勿提交真实值。",
+  "providers": {
+    "my-gateway": {
+      "name": "my-gateway",
+      "api": "openai-completions",
+      "apiKey": "<你的 API KEY>",
+      "baseUrl": "<你的网关地址，如 https://example.com/v1>",
+      "models": [
+        {
+          "id": "<模型 ID>",
+          "name": "<显示名>",
+          "reasoning": true,
+          "thinkingLevelMap": {
+            "minimal": null,
+            "low": "low",
+            "medium": "medium",
+            "high": "high",
+            "max": "max"
+          },
+          "compat": {
+            "thinkingFormat": "<deepseek|anthropic|openai|...>",
+            "supportsDeveloperRole": false,
+            "maxTokensField": "max_tokens",
+            "requiresReasoningContentOnAssistantMessages": false
+          }
+        }
+      ]
+    }
+  }
+}

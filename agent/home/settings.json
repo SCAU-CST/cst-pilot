@@ -1,5 +1,5 @@
 {
-  "_comment": "cst-pilot: 只读分析 Agent（完全隔离版）。defaultTools 仅官方结构只读四件套；edit/write/powershell/bash 不注册。disk 由 extensions/disk.ts 注册。defaultProjectTrust=never 拒绝 cwd 祖先链上的项目级资源（.pi/.agents）；skills 与上下文文件由 pi.cmd 传 --no-skills --no-context-files 硬关闭；模型/KEY 由 models.json（axon）统一管理。",
+  "_comment": "cst-pilot: 只读分析 Agent（完全隔离版）。defaultTools 仅官方结构只读四件套；edit/write/powershell/bash 不注册。disk 由 extensions/disk.ts 注册。defaultProjectTrust=never 拒绝 cwd 祖先链上的项目级资源（.pi/.agents）；skills 与上下文文件由 pi.cmd 传 --no-skills --no-context-files 硬关闭；模型/KEY 由 models.json（第三方网关）统一管理。",
   "defaultProvider": "opencode-go",
   "defaultModel": "glm-5.3-flash",
   "defaultTools": [
