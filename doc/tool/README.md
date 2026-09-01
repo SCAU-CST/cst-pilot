@@ -43,16 +43,7 @@ result 内约定三个键：`data` 本体、`notice` 降级/附注说明、`erro
 这样做的收益：工具描述只占一份上下文，模型学会一次就能用全部子功能；
 子功能之间共享 pwsh 调用、超时、降级等基础设施。
 
-### LLM 实际收到的提示词：三个通道
-
-工具注册后，LLM 从三个通道感知这个工具（均经运行时实测验证，
-抓取脚本 `_t5.mjs`）：
-
-| 通道 | 来源 | 位置 |
-|---|---|---|
-| `Available tools:` 列表行 | `promptSnippet`（一行短话） | 系统提示词 |
-| `Guidelines:` 条目 | `promptGuidelines`（数组，逐条列出，去重） | 系统提示词 |
-| Function schema | `description` + `parameters`（TypeBox 转 JSON Schema，含 enum/required） | 每次 API 请求的 tools 数组 |
+### 提示词
 
 两个容易踩的坑：
 
@@ -69,11 +60,3 @@ result 内约定三个键：`data` 本体、`notice` 降级/附注说明、`erro
 `extensions\` 下的 `.ts` 由 pi 自动加载，default export 接收 `pi`，调 `pi.registerTool()` 注册。
 共享模块（如 wz-index.ts）提供一个空 factory 让加载器安静。
 同名注册覆盖内置工具（ls 即用此机制）。
-
-### 测试与文档实例
-
-`agent\_t1.mjs` ~ `_t4.mjs`：用 `createAgentSession` 起隔离会话，
-从 `agent.state.tools` 直接取工具对象调 `execute()`，绕过 LLM 验证工具层。
-
-`_t4.mjs` 是文档实例抓取脚本：各工具文档中的调用/输出实例均为其真实运行结果，
-而非手写示意。改了工具实现后重跑即可更新文档实例。

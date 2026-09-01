@@ -20,9 +20,8 @@ scope 即工具内部的子功能开关：`sys` 只注册一个工具名，
 | `scope` | 是 | `proc`=进程盘点；`gpu`=GPU 状态；`sensor`=温度/风扇/电压（后续里程碑扩充 overview/startup） |
 | `top` | 否 | Top N，默认 10，上限 50，仅 proc/gpu 有效 |
 
-以下实例均为真实运行输出（`_t4.mjs` 抓取，本机 16 逻辑核 / RTX 5070 Ti）。
 
-## LLM 收到的提示词（逐字实录）
+## LLM 收到的提示词
 
 系统提示词 `Available tools:` 列表中的行：
 

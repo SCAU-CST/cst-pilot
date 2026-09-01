@@ -19,9 +19,8 @@
 | `health` | SMART 可靠性数据（寿命/温度/通电小时） | pwsh：`Get-StorageReliabilityCounter` | 是 | —（降级） |
 | `usage` | 目录占用排行、大文件、可清理项 | WizTree MFT 直读 → 降级 node 逐文件 walk | 否（实测） | ~0.7s |
 
-以下实例均为真实运行输出（`_t4.mjs` 抓取）。
 
-## LLM 收到的提示词（逐字实录）
+## LLM 收到的提示词
 
 系统提示词 `Available tools:` 列表中的行：
 
@@ -55,8 +54,6 @@ Function schema（每次请求的 tools 数组中）：
 }
 ```
 
-注意：`description` 是模型了解 scope 语义的唯一来源——五个 scope 的含义、
-四张表的字段名全部写在这段话里。
 
 ## scope=space：各盘空间
 
