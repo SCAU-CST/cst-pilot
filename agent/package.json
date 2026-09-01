@@ -1,0 +1,16 @@
+{
+  "name": "cst-pilot",
+  "version": "1.0.0",
+  "description": "CST Pilot: portable diagnostics kit for the Computer Service Team, built on pi coding agent",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@earendil-works/pi-coding-agent": "^0.84.4"
+  }
+}

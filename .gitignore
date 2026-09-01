@@ -1,0 +1,20 @@
+# ---- 运行环境与第三方产物（随 zip 分发，可重建，不进 git）----
+node/
+agent/node_modules/
+agent/home/bin/
+agent/home/npm/
+agent/home/fff/
+pwsh/
+wiztree/
+
+# ---- 运行时状态与密钥 ----
+agent/home/auth.json
+agent/home/models.json
+agent/home/models-store.json
+agent/home/web-search.json
+agent/home/open-tui.json
+agent/home/sessions/
+
+# ---- 杂项 ----
+Thumbs.db
+desktop.ini

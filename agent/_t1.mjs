@@ -1,0 +1,18 @@
+import { createAgentSession } from "@earendil-works/pi-coding-agent";
+const r = await createAgentSession({ cwd: "E:\\Learning\\Programming\\cst-pilot", agentDir: "E:\\Learning\\Programming\\cst-pilot\\agent\\home" });
+const ls = r.session.agent.state.tools.find(t => t.name === "ls");
+const run = async (id, params) => { const t0 = Date.now(); const res = await ls.execute(id, params); return { u: JSON.parse(res.content[0].text), ms: Date.now()-t0 }; };
+let t0 = Date.now();
+let a = await run("a1", { path: "E:\\Learning\\Programming\\cst-pilot", top: 10 });
+console.log(`[E:\\cst-pilot] ${ (a.ms/1000).toFixed(1) }s | method: ${a.u.method} | 合计 ${a.u.totalSize} | notice: ${a.u.notice ?? "无"}`);
+for (const e of a.u.entries) console.log(`  ${e.size.padStart(9)}  ${String(e.pct).padStart(5)}%  ${e.type.padEnd(4)} ${e.name}`);
+let b = await run("b1", { path: "C:\\Windows\\System32", top: 8 });
+console.log(`\n[C:\\Windows\\System32] ${ (b.ms/1000).toFixed(2) }s`);
+for (const e of b.u.entries) console.log(`  ${e.size.padStart(9)}  ${String(e.pct).padStart(5)}%  ${e.type.padEnd(4)} ${e.name}`);
+let c = await run("c1", { path: "C:\\not-exist-dir-xyz" });
+console.log(`\n[不存在路径] error: ${c.u.error ?? JSON.stringify(c.u).slice(0,60)}`);
+let d = await run("d1", { path: "E:\\Learning\\Programming\\cst-pilot\\pi.cmd" });
+console.log(`[文件不是目录] error: ${d.u.error ?? JSON.stringify(d.u).slice(0,60)}`);
+let e = await run("e1", { path: "C:\\Program Files\\Common Files", top: 4 });
+console.log(`\n[Common Files 深钻] ${ (e.ms/1000).toFixed(2) }s`);
+for (const i of e.u.entries) console.log(`  ${i.size.padStart(9)}  ${String(i.pct).padStart(5)}%  ${i.type.padEnd(4)} ${i.name}`);
