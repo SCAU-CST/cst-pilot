@@ -11,6 +11,8 @@ cst-pilot 的系统检查能力：实时负载 + 配置盘点。
 |---|---|---|
 | `ls`（自定义） | ✅ 已实现 | 目录大小浏览：目录大小、大文件定位 |
 | `disk`（自定义） | ✅ 已实现 | 存储分析：磁盘空间 / 信息 / 健康 / 全盘占用扫描 |
+| `sys`（自定义） | ✅ 已实现 | 实时负载与传感器：整机概况（overview）/ 进程（proc）/ GPU（gpu）/ 传感器（sensor） |
+| `startup`（自定义） | ✅ 已实现 | 开机自启盘点：注册表 Run 键（含禁用状态）/ 启动文件夹 / 自启服务 |
 
 ### 体验优化（第三方扩展）
 
@@ -22,8 +24,9 @@ cst-pilot 的系统检查能力：实时负载 + 配置盘点。
 
 ### 缺口
 
-存储分析与实时负载（进程 / GPU / 温度）已有（ls / disk / sys 的
-proc·gpu·sensor scope）。开机自启盘点（sys 的 startup scope）无工具覆盖。
+无。存储分析（ls / disk）、实时负载与传感器（sys 的
+overview·proc·gpu·sensor scope）、开机自启盘点（独立工具 startup）
+均已覆盖。
 
 ## 用户与场景
 
@@ -47,7 +50,7 @@ proc·gpu·sensor scope）。开机自启盘点（sys 的 startup scope）无工
 | 层 | 需求 | 回答 |
 |---|---|---|
 | 实时负载 | R1–R4 | 此刻发生了什么 |
-| 配置盘点 | R5 | 开机时会拉起什么 |
+| 配置盘点 | R5 | 开机时会拉起什么（独立工具 `startup`，不在 sys 内） |
 
 ### R1 进程盘点
 
@@ -79,9 +82,14 @@ proc·gpu·sensor scope）。开机自启盘点（sys 的 startup scope）无工
 
 ### R5 开机自启盘点
 
-- 注册表自启项
-- 启动文件夹自启项
-- 自启服务列表
+> 实现为独立工具 `startup`（`agent\home\extensions\startup.ts`），
+> 不进 sys 的 scope 体系：配置盘点与实时负载不属一类问题，无共享
+> 采集逻辑（理由与决策记录见 sys_design.md 待拍板）。
+
+- 注册表自启项（HKLM / HKCU / Wow6432Node 的 Run / RunOnce）
+- 启动文件夹自启项（当前用户 + 所有用户）
+- 自启服务列表（StartMode=Auto，含延迟自启）
+- 任务管理器禁用状态：已禁用项如实标注（`disabled=true`），不误报为会拉起
 
 ## 非功能需求
 
@@ -102,7 +110,7 @@ proc·gpu·sensor scope）。开机自启盘点（sys 的 startup scope）无工
 
 ## 待拍板
 
-- [ ] `startup` scope 是否纳入本期
+- [x] `startup` scope 是否纳入本期（已定：剥离为独立工具 `startup`，不进 sys，见 sys_design.md 待拍板）
 - [x] R3 在无管理员权限时的具体降级文案（已定并实测，2026-09-01）：
   方案已改为免安装三路数据源（GPU 传感器 / 热区计数器 / 降频百分比），
   全部免管理员，无需降级分支。CPU 核心温度零安装下不可得（内核驱动

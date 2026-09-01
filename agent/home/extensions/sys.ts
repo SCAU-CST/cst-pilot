@@ -11,9 +11,12 @@
  *   开源硬件传感器库，DLL 打包在仓库 lhm\）。GPU 传感器免管理员；
  *   CPU / 主板传感器的内核级读取依赖 PawnIO 驱动（LHM 0.9.6 起不再内置
  *   WinRing0），未装 PawnIO 或非管理员时自动降级只报可用部分。
+ * - scope=overview: 整机负载概况（R4）。物理内存用量 + CPU 总占用率 +
+ *   页面文件状态 + 开机时长。免管理员，纯快照。
  *
- * 里程碑（doc/design/sys_design.md）：R1=proc，R2=gpu，R3=sensor；
- * overview / startup 为后续 scope，实现后扩充枚举。
+ * 里程碑（doc/design/sys_design.md）：R1=proc，R2=gpu，R3=sensor，R4=overview。
+ * R5（开机自启盘点）已从 sys 剥离为独立工具 startup.ts（配置盘点与实时
+ * 负载不属一类问题，单独注册边界更清晰）。无 scope 时兜底 overview。
  */
 import { Type } from "typebox";
 import { StringEnum } from "@earendil-works/pi-ai";
@@ -323,40 +326,86 @@ async function collectSensor(): Promise<any> {
 }
 
 /* ------------------------------------------------------------------ */
+/* scope=overview · 整机负载概况：内存 / CPU 总占用 / 页面文件 / 开机时长 */
+/* ------------------------------------------------------------------ */
+
+// 免管理员，纯快照（近 1 秒差分除外，见下）。
+// CPU 总占用：Win32_PerfFormattedData_PerfOS_Processor（WMI 格式化计数器类，
+// 类名不随系统语言本地化，避开 Get-Counter 英文路径在本机可用的脆弱依赖）。
+// 该类首读是 provider 启动以来的累计值不可信，读两次取第二次。
+const OVERVIEW_CMD = `
+$ErrorActionPreference = 'SilentlyContinue'
+$null = Get-CimInstance Win32_PerfFormattedData_PerfOS_Processor
+Start-Sleep -Milliseconds 1000
+$cpuPct = [math]::Round((Get-CimInstance Win32_PerfFormattedData_PerfOS_Processor |
+  Where-Object { $_.Name -eq '_Total' } | Select-Object -First 1).PercentProcessorTime, 1)
+
+$os = Get-CimInstance Win32_OperatingSystem
+$totalMB = [math]::Round($os.TotalVisibleMemorySize / 1KB, 0)
+$freeMB  = [math]::Round($os.FreePhysicalMemory / 1KB, 0)
+$usedMB  = $totalMB - $freeMB
+$up = (Get-Date) - $os.LastBootUpTime
+$uptime = if ($up.Days -gt 0) { '{0}天{1}小时{2}分' -f $up.Days, $up.Hours, $up.Minutes } else { '{0}小时{1}分' -f $up.Hours, $up.Minutes }
+
+$pf = @(Get-CimInstance Win32_PageFileUsage | ForEach-Object {
+  [pscustomobject]@{ name = $_.Name; allocMB = $_.AllocatedBaseSize; usedMB = $_.CurrentUsage; peakMB = $_.PeakUsage }
+})
+
+ConvertTo-Json @{
+  cpuTotalPct  = $cpuPct
+  logicalCores = [Environment]::ProcessorCount
+  mem          = @{ totalMB = $totalMB; usedMB = $usedMB; freeMB = $freeMB; usedPct = [math]::Round(100 * $usedMB / [math]::Max($totalMB, 1), 1) }
+  pagefile     = $pf
+  uptime       = @{ bootTime = $os.LastBootUpTime.ToString('yyyy-MM-dd HH:mm'); text = $uptime; totalHours = [math]::Round($up.TotalHours, 1) }
+} -Depth 3
+`;
+
+async function collectOverview(): Promise<any> {
+	const r = await runPwsh(OVERVIEW_CMD, 20000);
+	if (r && typeof r.error === "string") return { error: r.error };
+	return {
+		...r,
+		notice: `整机负载快照。mem=物理内存用量（usedPct>90 提示内存吃紧，可与 proc.byMem 对照找大户）；cpuTotalPct=整机 CPU 占用率（近 1 秒差分，可与 proc.byCpu 对照）；pagefile=页面文件分配/当前/峰值用量（usedMB 持续接近 allocMB 说明物理内存不足在靠页面文件撑）；uptime=开机时长（usedPct 高但 cpuPct 低常见于磁盘或内存压力，进一步看 disk / proc）。`,
+	};
+}
+
+/* ------------------------------------------------------------------ */
 
 export default function (pi: any) {
 	pi.registerTool({
 		name: "sys",
 		label: "System Check",
 		description:
-			"获取系统运行状态的结构化只读信息：scope=proc 进程盘点（内存 Top N + CPU 占用率 Top N，CPU 为 1.2 秒双采样差分）；scope=gpu GPU 状态（每进程 GPU 利用率与专用显存排行；检测到 NVIDIA 显卡时附温度/功耗/显存/驱动版本）；scope=sensor 传感器与过热检测（GPU 温度/风扇/电压 + 主板热区温度 + CPU 降频百分比，全部免管理员免安装；CPU 核心温度需内核驱动，零安装下不可得，以降频信号替代）。只读，不做任何修改。",
-		promptSnippet: "Query running processes, GPU load, and hardware sensors (read-only)",
+			"只读系统检查工具，按 scope 选择子功能（不传默认 overview）：overview=整机负载快照（内存/CPU 总占用/页面文件/开机时长）；proc=进程内存与 CPU 占用 Top N；gpu=每进程 GPU 利用率与专用显存排行（有 NVIDIA 时附显卡状态）；sensor=温度/风扇/电压/降频信号（过热诊断）。详细指南与诊断交叉印证链见 skill「sys」。",
+		promptSnippet: "Query overall system load, running processes, GPU load, and hardware sensors (read-only)",
 		promptGuidelines: [
+			"Use sys scope=overview (or omit scope) when the user asks whether the machine is loaded/ sluggish overall: gives RAM usage, total CPU load, pagefile pressure, and uptime in one snapshot.",
 			"Use sys scope=proc when the user asks who is using memory/CPU or whether a process is hogging resources.",
 			"Use sys scope=gpu when the user asks about GPU load, VRAM usage, or GPU temperature.",
 			"Use sys scope=sensor when the user asks about temperatures, fans, voltages, or overheating (provides GPU sensors, thermal zones, and CPU throttling percentage; CPU core temps need a kernel driver and are unavailable).",
 		],
 		parameters: Type.Object({
-			scope: StringEnum(["proc", "gpu", "sensor"] as const, {
-				description: "proc=进程盘点（内存+CPU）；gpu=GPU 状态（利用率+显存+NVIDIA 状态）；sensor=温度/风扇/电压",
-			}),
+			scope: Type.Optional(StringEnum(["overview", "proc", "gpu", "sensor"] as const)),
 			top: Type.Optional(
 				Type.Number({ description: "可选，Top N 进程数，默认 10，上限 50。" }),
 			),
 		}),
 
-		async execute(_toolCallId: string, params: { scope: string; top?: number }) {
+		async execute(_toolCallId: string, params: { scope?: string; top?: number }) {
 			const topN = Math.max(1, Math.min(50, Math.floor(params.top ?? 10)));
+			const scope = params.scope ?? "overview"; // 无 scope 兜底 overview：一次调用回答“电脑现在怎么样”
 			const result: any = {};
 
-			if (params.scope === "proc") {
+			if (scope === "proc") {
 				result.proc = await collectProc(topN);
-			} else if (params.scope === "gpu") {
+			} else if (scope === "gpu") {
 				result.gpu = await collectGpu(topN);
-			} else if (params.scope === "sensor") {
+			} else if (scope === "sensor") {
 				result.sensor = await collectSensor();
+			} else if (scope === "overview") {
+				result.overview = await collectOverview();
 			} else {
-				result.error = `未知 scope: ${params.scope}（当前支持 proc / gpu / sensor）`;
+				result.error = `未知 scope: ${scope}（当前支持 overview / proc / gpu / sensor）`;
 			}
 
 			return {

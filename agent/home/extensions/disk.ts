@@ -366,7 +366,7 @@ export default function (pi: any) {
 		name: "disk",
 		label: "Disk Info",
 		description:
-			"获取磁盘/卷的结构化只读信息：空间（总量/剩余/占用率）、物理盘基本信息（型号/SSD或HDD/NVMe或SATA或USB/健康状态）、SMART 可靠性数据（寿命磨损/温度/通电小时，需要管理员权限，失败时自动降级并说明）、目录占用排行 usage（一次返回四张表：目录排行 topDirs、单个大文件 topFiles、按扩展名聚合 extAgg、一年未动的大文件 staleFiles；管理员走 WizTree 秒级全扫，普通权限走逐文件统计较慢）。不做任何修改。",
+			"只读磁盘信息工具，按 scope 选择子功能：space=各卷空间；info=物理盘型号/类型/健康状态；health=SMART 寿命/温度/通电小时（需管理员，权限不足自动降级）；usage=目录占用排行、单个大文件、扩展名聚合、一年未动的大文件（WizTree 快速全扫，失败自动降级为慢速统计，结果为下界）；all=space+info+health 一次取全。详细指南见 skill「disk」。",
 		promptSnippet: "Query disk space, drive info, health, and directory usage ranking (read-only)",
 		promptGuidelines: [
 			"Use disk when the user asks about disk space, capacity, free space, drive models, drive health, or which folders take the most space.",

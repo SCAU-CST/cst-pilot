@@ -1,4 +1,4 @@
-# sys — 系统检查工具（R1/R2/R3）
+# sys — 系统检查工具（R1–R4）
 
 实现：`agent\home\extensions\sys.ts`。需求见 `doc\PRD.md`，设计见 `doc\design\sys_design.md`。
 
@@ -8,16 +8,16 @@ ls/disk 覆盖的是静态存储。维修现场另一半问题——"谁在吃�
 CPU 是否跑满、GPU 忙不忙、温度是否异常"——属于**运行时状态**，
 此前无工具可答。
 
-R1（进程盘点）、R2（GPU 状态）、R3（传感器）是 sys 的前三个 scope。
-scope 即工具内部的子功能开关：`sys` 只注册一个工具名，
-调用时用 `scope` 参数选择查进程、查 GPU 还是查传感器
-（架构选型见 sys_design.md）。
+R1（进程盘点）、R2（GPU 状态）、R3（传感器）、R4（整机概况）是 sys
+已实现的前四个 scope。scope 即工具内部的子功能开关：`sys` 只注册
+一个工具名，调用时用 `scope` 参数选择查整机、查进程、查 GPU 还是
+查传感器（架构选型见 sys_design.md）。
 
 ## 调用方式
 
 | 参数 | 必填 | 说明 |
 |---|---|---|
-| `scope` | 是 | `proc`=进程盘点；`gpu`=GPU 状态；`sensor`=温度/风扇/电压（后续里程碑扩充 overview/startup） |
+| `scope` | 否 | `overview`=整机概况（默认）；`proc`=进程盘点；`gpu`=GPU 状态；`sensor`=温度/风扇/电压（R5 自启盘点不在 sys 内，独立工具 startup） |
 | `top` | 否 | Top N，默认 10，上限 50，仅 proc/gpu 有效 |
 
 
@@ -26,12 +26,13 @@ scope 即工具内部的子功能开关：`sys` 只注册一个工具名，
 系统提示词 `Available tools:` 列表中的行：
 
 ```
-- sys: Query running processes, GPU load, and hardware sensors (read-only)
+- sys: Query overall system load, running processes, GPU load, and hardware sensors (read-only)
 ```
 
 系统提示词 `Guidelines:` 中的条目：
 
 ```
+- Use sys scope=overview (or omit scope) when the user asks whether the machine is loaded/ sluggish overall: gives RAM usage, total CPU load, pagefile pressure, and uptime in one snapshot.
 - Use sys scope=proc when the user asks who is using memory/CPU or whether a process is hogging resources.
 - Use sys scope=gpu when the user asks about GPU load, VRAM usage, or GPU temperature.
 - Use sys scope=sensor when the user asks about temperatures, fans, voltages, or overheating (provides GPU sensors, thermal zones, and CPU throttling percentage; CPU core temps need a kernel driver and are unavailable).
@@ -42,17 +43,47 @@ Function schema（每次请求的 tools 数组中）：
 ```jsonc
 {
   "name": "sys",
-  "description": "获取系统运行状态的结构化只读信息：scope=proc 进程盘点（内存 Top N + CPU 占用率 Top N，CPU 为 1.2 秒双采样差分）；scope=gpu GPU 状态（每进程 GPU 利用率与专用显存排行；检测到 NVIDIA 显卡时附温度/功耗/显存/驱动版本）；scope=sensor 传感器与过热检测（GPU 温度/风扇/电压 + 主板热区温度 + CPU 降频百分比，全部免管理员免安装；CPU 核心温度需内核驱动，零安装下不可得，以降频信号替代）。只读，不做任何修改。",
+  "description": "只读系统检查工具，按 scope 选择子功能（不传默认 overview）：overview=整机负载快照（内存/CPU 总占用/页面文件/开机时长）；proc=进程内存与 CPU 占用 Top N；gpu=每进程 GPU 利用率与专用显存排行（有 NVIDIA 时附显卡状态）；sensor=温度/风扇/电压/降频信号（过热诊断）。详细指南与诊断交叉印证链见 skill「sys」。",
   "parameters": {
     "type": "object",
-    "required": ["scope"],
     "properties": {
-      "scope": { "type": "string", "enum": ["proc", "gpu", "sensor"], "description": "proc=进程盘点（内存+CPU）；gpu=GPU 状态（利用率+显存+NVIDIA 状态）；sensor=温度/风扇/电压/降频" },
+      "scope": { "type": "string", "enum": ["overview", "proc", "gpu", "sensor"] },
       "top":   { "type": "number", "description": "可选，Top N 进程数，默认 10，上限 50。" }
     }
   }
 }
 ```
+
+## scope=overview：电脑现在怎么样（整机负载概况）
+
+```
+sys({ scope: "overview" })   // 不传 scope 时兜底此项
+```
+
+```jsonc
+{
+  "overview": {
+    "cpuTotalPct": 8,                   // 整机 CPU 占用率（近 1 秒差分）
+    "logicalCores": 16,
+    "mem": {
+      "totalMB": 32557, "usedMB": 21285, "freeMB": 11272,
+      "usedPct": 65.4
+    },
+    "pagefile": [                       // 页面文件（可多个）
+      { "name": "C:\\pagefile.sys", "allocMB": 10240, "usedMB": 202, "peakMB": 251 }
+    ],
+    "uptime": {
+      "bootTime": "2026-09-01 10:36",   // 开机时间
+      "text": "11小时11分",              // 人类可读时长，可直接转述
+      "totalHours": 11.2
+    },
+    "notice": "整机负载快照。mem=物理内存用量（usedPct>90 提示内存吃紧…）…"
+  }
+}
+```
+
+实测 2.5 秒返回（含 1 秒 CPU 差分窗口；本进程首次调用额外有 WMI 预热，
+可达 10 秒）。免管理员。
 
 ## scope=proc：谁在吃内存和 CPU
 
@@ -207,6 +238,25 @@ cpuPct = 100 × (t2 − t1) / 实际间隔秒 / 逻辑核数
 内存直接取采样 2 的 `WorkingSet64`（工作集：进程实际占用的物理内存），
 与任务管理器默认列一致，维修人员可对照验证。
 
+### overview：格式化计数器类双读
+
+一条 pwsh 命令内取四路，除 CPU 占用率外均为纯快照：
+
+| 数据 | 来源 |
+|---|---|
+| CPU 总占用率 | `Win32_PerfFormattedData_PerfOS_Processor`（`_Total` 实例，读两次取第二次） |
+| 物理内存 | `Win32_OperatingSystem`（`TotalVisibleMemorySize` / `FreePhysicalMemory`） |
+| 页面文件 | `Win32_PageFileUsage`（分配/当前/峰值用量） |
+| 开机时长 | `Win32_OperatingSystem.LastBootUpTime` 与当前时间差 |
+
+CPU 总占用率不用 `Get-Counter`：英文计数器路径在本机中文系统可用
+（见下文“实测排除的坑”），但那是对未本地化计数器组的实测结论，
+`\Processor(*)` 组是会被本地化的组之一，不应依赖。改用 WMI 格式化
+计数器类——类名永不本地化，且免管理员。
+
+**读两次**：格式化计数器类的首读是 provider 启动以来的累计值，不可信；
+预读一次弃用，隔 1 秒再读才是真实的近 1 秒差分。
+
 ### gpu：三路数据并行
 
 ```ts
@@ -255,7 +305,8 @@ pid→进程名映射：两路计数器实例合并后对去重 pid 逐个 `Get-
 
 | 决策 | 备选 | 理由 |
 |---|---|---|
-| 双采样差分算 CPU% | `PerfProc` 原始计数器表 | 实测该表查询 7.8 秒，不可接受；双采样 1.9 秒 |
+| 双采样差分算 CPU%（proc） | `PerfProc` 原始计数器表 | 实测该表查询 7.8 秒，不可接受；双采样 1.9 秒 |
+| 格式化计数器类双读算 CPU 总占用（overview） | `Get-Counter \\Processor(_Total)` / `Win32_Processor.LoadPercentage` | 前者英文路径依赖未本地化实测结论，`Processor` 组恰恰会被本地化；后者偶发 null 且粒度粗；WMI 类名永不本地化且免管理员 |
 | 采样放 pwsh 命令内 | Node 侧两次调 runPwsh | 三次进程启动 + JSON 序列化的开销远大于命令内 Sleep；且保证间隔计算在同一时钟 |
 | 工作集（WS）作内存指标 | 提交内存 / 专用字节 | 与任务管理器默认列一致，可对照验证 |
 | GPU 计数器一次 Get-Counter 全取 | 按需过滤实例名 | CounterSamples 一次拿全（452 个），Node 侧过滤更灵活 |
@@ -266,6 +317,7 @@ pid→进程名映射：两路计数器实例合并后对去重 pid 逐个 `Get-
 | 降频信号替代 CPU 核心温度 | 装 PawnIO / 带 WinRing0 的旧 LHM | 前者违背零安装，后者被微软拦（CVE-2020-14979）；降频是过热的直接后果，诊断上更接近结论 |
 | 热区合理性过滤（-50~150°C） | 原样上报 | ACPI 缺传感器时返回伪值，污染上下文 |
 | 每进程聚合 + engtypes 清单 | 保留每引擎明细 | 明细 452 行会淹没模型；聚合后 10 行 + 类型清单信息量足够 |
+| 无 scope 兜底 overview | scope 必填 | “电脑现在怎么样”是最常见的开场问题，一次调用必有答案；schema 也更省模型选择成本 |
 
 ### 实测排除的坑
 
@@ -288,5 +340,7 @@ Windows 性能计数器名称理论上随系统语言本地化
   必须结合负载；
   热区温度的身份（CPU 还是主板）由 ACPI 命名决定（如 _TZ.CPUZ），
   本机只有 _TZ.TZ00 一个热区，语义需结合机器型号解读
-- scope 枚举目前只有 `proc` / `gpu` / `sensor`；`overview` / `startup`
-  随里程碑 3/5 扩充（见 sys_design.md）
+- `cpuTotalPct` 是近 1 秒差分，瞬时突发可能低估（与 proc.cpuPct 同理）
+- overview 首次调用含 WMI 提供程序预热，可能明显慢于后续调用（实测冷启动约 10 秒，热后 2.5 秒）
+- scope 枚举目前为 `overview` / `proc` / `gpu` / `sensor`；R5 自启盘点
+  已剥离为独立工具 `startup`（见 `doc\tool\startup.md`）

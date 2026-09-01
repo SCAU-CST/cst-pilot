@@ -17,33 +17,46 @@
 
 1. 扫描机主的磁盘状态，分析C盘等磁盘的文件占用情况，AI分析后可给出清理建议
 2. 分析机主当前进程的运行状态，给出占用CPU，内存，GPU等状态
-3. 获取机主硬件参数，以及温度、风扇、电压、降频等。
+3. 获取机主硬件参数，以及温度、风扇、电压、降频等
+4. 整机负载概况：物理内存、CPU 总占用率、页面文件、开机时长
+5. 开机自启盘点：注册表 Run 键（含任务管理器禁用状态）、启动文件夹、自启服务
 
 ### 未来计划
 
-1. 对整机的负载情况做一个简单检查。见[sys_design.md](doc/design/sys_design.md) R4
-2. 获取开机启动项。见[sys_design.md](doc/design/sys_design.md) R5
+暂无。
 
 ## 目录结构
 
-| 目录 | 是否入库 | 内容 |
-|---|---|---|
-| `agent\home\`（部分） | ✅ | 隔离的 pi 配置：extensions（自定义工具）、skills、settings.json |
-| `doc\` | ✅ | 项目文档（PRD / 设计 / 工具文档） |
-| `lhm\` | ✅ | LibreHardwareMonitorLib DLL 包（约 2.7MB，见 `lhm\README.md`） |
-| `pi.cmd` | ✅ | 唯一入口，启动隔离的 pi Agent |
-| `agent\node_modules\` | ❌ | pi 及依赖（`npm install` 重建，见下） |
-| `node\` | ❌ | Node.js 运行时（便携版，另行分发） |
-| `pwsh\` | ❌ | PowerShell 7 运行时（便携版，另行分发） |
-| `wiztree\` | ❌ | WizTree 便携版（磁盘占用快速分析，需管理员权限，另行分发） |
-| `agent\home\{auth,models,models-store,web-search,open-tui}.json` | ❌ | 密钥与运行时状态，不入库 |
-| `agent\home\sessions\`、`agent\home\{bin,npm,fff}\` | ❌ | 会话历史与 fff 扩展运行产物，不入库 |
+> ✅ 已入库　❌ 不入库
+
+```
+cst-pilot/
+├── pi.cmd                          ✅ 唯一入口，启动隔离的 pi Agent
+├── doc/                            ✅ 项目文档（PRD / 设计 / 工具文档）
+├── lhm/                            ✅ LibreHardwareMonitorLib DLL 包（约 2.7MB，见 lhm/README.md）
+└── agent/
+    ├── node_modules/               ❌ pi 及依赖（npm install 重建，见下）
+    └── home/                       ✅（部分）隔离的 pi 配置：extensions（自定义工具）、skills、settings.json
+        ├── {auth,models,models-store,web-search,open-tui}.json   ❌ 密钥与运行时状态
+        ├── sessions/               ❌ 会话历史
+        └── {bin,npm,fff}/          ❌ fff 扩展运行产物
+```
+
+以下目录随发行版分发，不在仓库中：
+
+```
+cst-pilot/
+├── node/                           ❌ Node.js 运行时（便携版，另行分发）
+├── pwsh/                           ❌ PowerShell 7 运行时（便携版，另行分发）
+└── wiztree/                        ❌ WizTree 便携版（磁盘占用快速分析，需管理员权限，另行分发）
+```
 
 ## 注意事项
 
 1. 本仓库只含源码与文档，完整运行环境请看发行部分。
 2. 当前实现中，提示词为 `APPEND_SYSTEM.md`而非熟知的`AGENTS.md`，原因见 [doc/Notice.md](doc/Notice.md)
-3. 模型URL和API当然是不包括的。如果你是CST的队员，请联系你们的委员。
+3. 模型URL和API当然是不包括的。如果你是CST的队员且需要相关资源，请联系你们的委员。
+4. 发行（拷贝整个目录到 U 盘）前，删除 `wiztree\WizTree3.ini`：它是上一台机器的界面状态（DPI、窗口位置等），跨机携带可能触发 WizTree 启动崩溃；WizTree 首次运行会自动重建默认配置，实测删除无副作用。
 
 
 
