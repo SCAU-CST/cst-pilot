@@ -1,79 +1,39 @@
 # Design — sys 系统检查工具
 
-对应 `doc\PRD.md`。R1–R5 逐条落位。
+对应 `doc\PRD.md`，R1–R5 逐条落位，已全部实现（2026-09-01）。
 
 ## TLDR
 
-**背景**：cst-pilot 的诊断能力目前只覆盖静态存储（disk / ls）。维修现场最常问的"谁在吃内存、温度为何高、什么在自启"没有工具可答——机主说"电脑卡"，Agent 只能空口推测。
+`sys`：实时负载 + 传感器检查，辅助维修人员现场定位
+"谁在吃资源"。单工具多 scope，沿用 disk 已验证的模式。
+调用方是模型：一份描述省 token，
+一套返回结构（`data / notice / error`）学一次用全部。
+与 disk 边界一句话：盘上归 disk，运行归 sys。
 
-**设计方向**：补一个 `sys` 工具，把“这台机器现在怎么样”变成一次调用。
-范围包括实时负载（整机概况 / 进程 / GPU / 传感器），对应 PRD 的 R1–R4。
-R5（开机自启盘点）落地前剥离为独立工具 `startup`——配置盘点与实时
-负载不属一类问题，无共享采集逻辑，独立注册边界更清晰（见待拍板）。
+## 选型
 
-**思路**：不拆多个工具，而是单工具内分 scope 路由——沿用 disk 已验证的模式。调用方是模型：一份工具描述省 token，一套返回结构（data / notice / error）学一次就会用全部 scope。采集复杂度（双采样、计数器聚合、驱动检测、提权降级）全部藏在实现内，对外只暴露一个 `{ scope, top }`。与 disk 的边界一句话：盘上归 disk，运行归 sys。
+A 单工具多 scope / B 每域一工具 / C 全量快照 → **A**。
 
-## 形态选型
-
-| 候选 | 形态 |
-|---|---|
-| A 单工具多 scope | `sys` 一个工具，scope 路由 |
-| B 每域一工具 | `proc` / `gpu` / `sensor` 各自注册 |
-| C 全量快照 | 无参数，一次返回全部 |
-
-| 维度 | A | B | C |
-|---|---|---|---|
-| 工具描述 token | 1 份 | 5 份 | 1 份 |
-| 模型选对难度 | 低 | 高（名字相似易混） | 无 |
-| 输出体积 | 按需 | 按需 | 全量 |
-| 响应速度 | 按需 | 按需 | 全部采集叠加，最慢 |
-| 与仓库现状一致 | ✅ disk 同构 | 新模式 | 新模式 |
-
-**结论：方案 A。**
-
-- 调用方是模型：描述常驻系统提示词，B 白烧 5 份
-- C 把最贵路径（双采样、GPU 计数器）绑死在每次调用上
+- 描述常驻系统提示词，B 白烧 5 份
+- C 把最贵路径（双采样、GPU 计数器）绑死在每次调用
 - disk 已验证该模式，模型零学习成本
 
 ## 接口
 
-```ts
-sys({ scope: "proc" | "gpu" | "sensor" | "overview", top?: number })
+```
+sys({ scope?, top? })
+│
+├─ top?=10   上限 50，仅 proc / gpu 生效
+│
+├─ overview    整机负载概况（R4）—— 无 scope 兜底
+├─ proc        内存 + CPU% Top N（R1）
+├─ gpu         每进程 GPU 利用率 + 显存
+│              独显附温度 / 功耗（R2）
+└─ sensor      温度 / 风扇 / 电压（R3）
 ```
 
-| scope | 对应需求 | 内容 |
-|---|---|---|
-| `proc` | R1 | 内存 + CPU% Top N 进程 |
-| `gpu` | R2 | 每进程 GPU 利用率 + 显存；独显附温度 / 功耗 |
-| `sensor` | R3 | 温度 / 风扇 / 电压 |
-| `overview` | R4 | 整机负载概况 |
-
-- `top` 仅对 `proc` / `gpu` 有效，其余忽略
-- 无 `scope` 时兜底 `overview`：一次调用回答“电脑现在怎么样”
-- R5 不在 sys 内：已剥离为独立工具 `startup`（`extensions\startup.ts`，
-  文档见 `doc\tool\startup.md`）
-
-### 返回结构
-
-对齐 disk：
-
-```jsonc
-{ "data": { ... }, "notice": "降级 / 附注", "error": "失败原因" }
-```
-
-模型学会一次，五个 scope 全部适用。
-
-## 需求映射
-
-| 需求 | scope | 采集源 | 管理员 |
-|---|---|---|---|
-| R1 | `proc` | 进程快照 + 双采样差分 | 否 |
-| R2 | `gpu` | GPU Engine 计数器；检测到 nvidia-smi 则附带 | 否 |
-| R3 | `sensor` | LHM 0.9.6 用户态（`lhm\`）+ 热区计数器 + 降频计数器，全部免安装免管理员 | 免管理员 |
-| R4 | `overview` | 性能计数器 + 系统接口 | 否 |
-| R5 | `startup`（独立工具） | 注册表 Run 键 + 启动文件夹 + 服务列表 | 否 |
-
-选型依据见 `doc\PRD.md` 与方案讨论记录；此处只定接口与归属。
+R5 剥离为独立工具 `startup.ts`：配置盘点与实时负载不同类，
+无共享采集逻辑，塞进 scope 只会让边界变模糊。
 
 ## 架构
 
@@ -92,43 +52,37 @@ sys({ scope: "proc" | "gpu" | "sensor" | "overview", top?: number })
 └──────────────────────────────────────────┘
 ```
 
-- 每个 `collectX()` 是内部缝，仅供实现与直连 harness（`_t*.mjs` 模式）测试
-- 共享设施一处实现，五条路径复用
+`collectX()` 仅供实现与直连 harness（`_t*.mjs`）测试。
 
-### 采集要点
+## 采集要点
 
-| scope | 要点 |
-|---|---|
-| `proc` | CPU% 用双采样差分；不走 PerfProc 原始表（实测 7.8s） |
-| `gpu` | GPU Engine 按进程聚合；GPU Process Memory 取显存；nvidia-smi 存在才附带 |
-| `sensor` | LHM 用户态 + Thermal Zone 计数器 + % of Maximum Frequency；CPU 核心温度零安装下不可得，降频信号替代（实测链见 tool/sys.md） |
-| `overview` | 纯快照，无采样 |
+- proc：CPU% 双采样差分；
+  不走 PerfProc 原始表（实测 7.8s）
+- gpu：GPU Engine 按进程聚合；
+  Process Memory 取显存；nvidia-smi 存在才附带
+- sensor：LHM 0.9.6 用户态（`lhm\`）+ Thermal Zone
+  + 降频计数器，免安装免管理员；
+  CPU 核心温度需内核驱动，零安装约束下用降频信号替代
+- overview：纯快照，无采样
 
 ## 边界
 
-| 对比 | 切分 |
-|---|---|
-| vs `disk` | 盘上归 disk（容量 / SMART），运行归 sys（负载） |
-| vs `startup` | startup 管“开机拉起什么”（静态配置），sys 管“现在什么在吃资源”（实时负载） |
-| vs `ls` | 导航归 ls，诊断归 sys |
-| 磁盘温度 | 归 `sensor`（数据源是传感器，非 SMART） |
+- 盘上归 `disk`（容量 / SMART），运行归 `sys`（负载）
+- `startup` 管"开机拉起什么"（静态配置），
+  `sys` 管"现在什么在吃资源"（实时负载）
+- 磁盘温度归 `sensor`（数据源是传感器，非 SMART）
 
 ## 里程碑
 
-| 序 | 交付 | 依赖 | 状态 |
-|---|---|---|---|
-| 1 | `proc` | 无 | ✅ 已实现（2026-09-01，`tests/_t3.mjs` 直连验证） |
-| 2 | `gpu` | 无 | ✅ 已实现（同上） |
-| 3 | `overview` | 无 | ✅ 已实现（2026-09-01，`tests/_t7.mjs` 直连验证；含无 scope 兜底 overview） |
-| 4 | `sensor` + `lhm\` 打包 | LHM DLL | ✅ 已实现（2026-09-01，`tests/_t3`/`tests/_t6` 直连验证；免管理员三路数据；UAC 提权实测确认 CPU 核心温度需内核驱动，零安装约束下用降频信号替代） |
-| 5 | `startup` 独立工具 | 无 | ✅ 已实现（2026-09-01，`tests/_t8.mjs` 直连验证；剥离为独立工具 `startup.ts`，非 sys scope，决策见待拍板） |
+- [x] proc —— 2026-09-01，`tests/_t3.mjs`
+- [x] gpu —— 2026-09-01，同上
+- [x] overview + 无 scope 兜底 —— 2026-09-01，`tests/_t7.mjs`
+- [x] sensor + `lhm\` 打包 —— 2026-09-01，`tests/_t3`/`_t6`；
+      UAC 实测确认核心温度需内核驱动，降频信号替代
+- [x] startup 剥离为独立工具 —— 2026-09-01，`tests/_t8.mjs`
 
-注：scope 枚举随里程碑逐步扩充，当前 `overview` / `proc` / `gpu` / `sensor`。
+## 待拍板（已全部落定）
 
-## 待拍板
-
-- [x] `top` 默认值（已定 10，与上限 50 一起在各 scope 实现中收敛）
-- [x] 无 scope 兜底 `overview`（已采纳，2026-09-01 随 R4 实现）
-- [x] `startup` 是否本期（已定：剥离为独立工具 `startup`，不进 sys scope。
-  理由：配置盘点与实时负载不属一类问题，无共享采集逻辑；独立注册后
-  sys 描述更短、模型按问题类型选工具更直接。2026-09-01 落地）
+- [x] `top` 默认 10，上限 50
+- [x] 无 scope 兜底 `overview`
+- [x] `startup` 剥离为独立工具，不进 sys scope

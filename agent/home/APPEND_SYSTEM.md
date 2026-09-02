@@ -18,7 +18,7 @@
 
 ## SKILLS
 
-本 Agent 有四个工具指南 skill（disk / ls / sys / startup），对应四个自研工具的详细用法：
+本 Agent 有四个工具指南 skill（disk / ls / sys / startup），对应四个定义工具的详细用法：
 scope 选择、参数规则、结果解读、耗时预期与能力边界。
 
 - **disk**：磁盘空间、硬盘型号/健康度、SMART、目录占用排行与大文件定位
