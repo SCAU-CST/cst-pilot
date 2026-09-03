@@ -274,7 +274,7 @@ async function lhmGpuStatus(): Promise<any> {
 
 async function collectGpu(topN: number): Promise<any> {
 	// GPU Engine 计数器偶发无效采样（实测观察到过）：失败重试 1 次再收敛为 {error}。
-	// 只重试计数器命令；nvidia-smi 与适配器清单每次都随首次结果走。
+	// 重试会重跑 GPU_CMD（适配器清单随重跑更新）；nvidia-smi 只在首次调用，结果复用。
 	const [first, nv] = await Promise.all([runPwsh(GPU_CMD(topN)), nvidiaStatus()]);
 	const r = first && typeof first.error === "string" ? await runPwsh(GPU_CMD(topN)) : first;
 	if (r && typeof r.error === "string") return { error: r.error };
@@ -437,7 +437,7 @@ async function collectSensor(): Promise<any> {
 	const r = await runPwsh(SENSOR_CMD, 30000);
 	if (r && typeof r.error === "string") return { error: r.error };
 	const hwList = Array.isArray(r.hardware) ? r.hardware.join(" / ") : "";
-	const pawnioFull = r.pawnio && r.admin ? "已检测到 PawnIO + 管理员，CPU/主板传感器已包含在 sensors中。" : "";
+	const pawnioFull = r.pawnio && r.admin ? "已检测到 PawnIO + 管理员，CPU/主板传感器已包含在 sensors 中。" : "";
 	// 计数器失败不静默：透出原因。无法区分"机器本来就没有"与"偶发失败"，
 	// 重试无判据，故不自动重试，让模型知情后自行决定。
 	const cErr = r.counterErrors ?? {};
@@ -537,7 +537,7 @@ export default function (pi: any) {
 		promptSnippet:
 			"Query overall system load, running processes, disk IO, GPU load, and hardware sensors (read-only)",
 		promptGuidelines: [
-			"Use sys scope=overview (or omit scope) when the user asks whether the machine is loaded/ sluggish overall: gives RAM usage, total CPU load, pagefile pressure, kernel memory pool, machine model (vendor/model/CPU/BIOS), and uptime in one snapshot.",
+			"Use sys scope=overview (or omit scope) when the user asks whether the machine is loaded/sluggish overall: gives RAM usage, total CPU load, pagefile pressure, kernel memory pool, machine model (vendor/model/CPU/BIOS), and uptime in one snapshot.",
 			"Use sys scope=proc when the user asks who is using memory/CPU or whether a process is hogging resources.",
 			"Use sys scope=io when the machine feels slow but CPU and memory look idle: shows per-disk busy/queue/read-write throughput and which processes are doing disk IO.",
 			"Use sys scope=gpu when the user asks about GPU load, VRAM usage, GPU temperature, or which graphics card the machine has (adapters list shows real and virtual display adapters).",
