@@ -40,18 +40,16 @@ R5 剥离为独立工具 `startup.ts`：配置盘点与实时负载不同类，
 外部缝一条，复杂度全在实现内：
 
 ```
-┌──────────────────────────────────────────┐
-│ 接口：sys { scope, top }                  │
-├──────────────────────────────────────────┤
-│ sys.ts   路由 + 参数校验 + 结果包装         │
-│  ├─ collectProc()    快照 + 双采样         │
-│  ├─ collectGpu()     计数器聚合 + nvidia-smi│
-│  ├─ collectSensor()  LHM + 提权降级        │
-│  ├─ collectOverview()                    │
-│  └─ runPwsh / 超时 / 解析   ← 共享设施      │
-└──────────────────────────────────────────┘
+sys({ scope, top })
+│
+├─ sys.ts   路由 + 参数校验 + 结果包装
+│
+├─ collectProc()      快照 + 双采样
+├─ collectGpu()       计数器聚合 + nvidia-smi
+├─ collectSensor()    LHM + 提权降级
+├─ collectOverview()
+└─ runPwsh / 超时 / 解析   ← 共享设施
 ```
-
 `collectX()` 仅供实现与直连 harness（`_t*.mjs`）测试。
 
 ## 采集要点
