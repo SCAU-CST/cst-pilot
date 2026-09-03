@@ -9,3 +9,10 @@
 5. [ ] **overview 加内存池计数器**：nonpaged/paged pool 两行采集。"内存高但榜单无大户"（驱动泄漏）场景即可定位。
 6. [ ] **gpu/sensor 计数器失败重试**：实测 GPU Engine 计数器偶发无效采样，工具收敛为 `{error}` 但无自动重试；加 1 次重试即可。另：非法参数被 schema 拦截时模型侧无明确报错文本，排障不友好，顺带评估。
 7. [ ] **overview 附带机型信息**：Win32_ComputerSystem/BIOS 现成字段（厂商/型号/BIOS 版本）+ CPU 型号。品牌机型决定已知问题清单（散热缺陷、OEM 预装坑），现场按机型匹配经验是第一步。
+
+---
+
+来源：eventlog 里程碑 1–9 完成（tests/_t9、_t10 直连 harness 共 148 项全过）后的收尾盘点。
+
+1. [ ] **eventlog 补 SKILL.md**：sys/disk/ls/startup 均有 `agent/home/skills/<tool>/SKILL.md`（模型侧参数与返回字段说明），eventlog 还没有。要点：8 个 scope 的字段语义、`notice` 必须转达、counts 折叠表读法（×n 与 last）、ID 白名单边界（冷门故障走 query）、与 sys 的分工（实时 vs 历史）、security 需管理员。
+2. [ ] **eventlog 真机实测**：目前仅直连 harness 验证，未在真实 pi 会话里端到端跑过。要点：zip 分发形态下（随包 pwsh + 严格 PATH）的调用、工具描述/引导词在真实上下文里能否引导模型选对 scope、security 非管理员降级的真实观感、坏机器上的耗时（30s 超时是否够）、counts 折叠表在刷屏机器上的实际降噪效果。
