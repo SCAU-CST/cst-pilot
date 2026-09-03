@@ -13,6 +13,7 @@ cst-pilot 的系统检查能力：实时负载 + 配置盘点。
 | `disk`（自定义） | ✅ 已实现 | 存储分析：磁盘空间 / 信息 / 健康 / 全盘占用扫描 |
 | `sys`（自定义） | ✅ 已实现 | 实时负载与传感器：整机概况（overview）/ 进程（proc）/ GPU（gpu）/ 传感器（sensor） |
 | `startup`（自定义） | ✅ 已实现 | 开机自启盘点：注册表 Run 键（含禁用状态）/ 启动文件夹 / 自启服务 |
+| `eventlog`（自定义） | ✅ 已实现 | 事件日志痕迹：最近错误/警告、开关机·意外关机·蓝屏历史、应用崩溃、服务故障、磁盘/文件系统报错、登录审计、自定义查询、单条原文 |
 
 ### 体验优化（第三方扩展）
 
@@ -25,8 +26,8 @@ cst-pilot 的系统检查能力：实时负载 + 配置盘点。
 ### 缺口
 
 无。存储分析（ls / disk）、实时负载与传感器（sys 的
-overview·proc·gpu·sensor scope）、开机自启盘点（独立工具 startup）
-均已覆盖。
+overview·proc·gpu·sensor scope）、开机自启盘点（独立工具 startup）、
+事件日志痕迹（eventlog：R6）均已覆盖。
 
 ## 用户与场景
 
@@ -42,6 +43,10 @@ overview·proc·gpu·sensor scope）、开机自启盘点（独立工具 startup
 - GPU 忙不忙、显存够不够
 - 温度是否异常
 - 什么在开机自启
+- 最近有没有蓝屏 / 意外关机（开关机历史）
+- 某个程序为什么总崩溃 / 起不来
+- 服务为什么启动失败
+- 磁盘有没有报错 / 是不是快坏了
 
 ## 需求
 
@@ -51,6 +56,7 @@ overview·proc·gpu·sensor scope）、开机自启盘点（独立工具 startup
 |---|---|---|
 | 实时负载 | R1–R4 | 此刻发生了什么 |
 | 配置盘点 | R5 | 开机时会拉起什么（独立工具 `startup`，不在 sys 内） |
+| 历史痕迹 | R6 | 过去发生过什么（独立工具 `eventlog`） |
 
 ### R1 进程盘点
 
@@ -90,6 +96,24 @@ overview·proc·gpu·sensor scope）、开机自启盘点（独立工具 startup
 - 启动文件夹自启项（当前用户 + 所有用户）
 - 自启服务列表（StartMode=Auto，含延迟自启）
 - 任务管理器禁用状态：已禁用项如实标注（`disabled=true`），不误报为会拉起
+
+### R6 事件日志痕迹
+
+> 实现为独立工具 `eventlog`（`agent\home\extensions\eventlog.ts`），
+> 设计见 `doc\design\event_design.md`。sys 管"现在什么在吃资源"（实时），
+> eventlog 管"过去发生过什么"（历史痕迹）——不同类问题，单独注册。
+
+- 最近错误/警告汇总（System + Application，最低级别档 warn/error 可选）
+- 开关机 / 意外关机 / 蓝屏历史（官方重启排查清单 ID 白名单 + WHEA 硬件错误）
+- 应用崩溃与启动失败（崩溃/WER/无响应/.NET/SideBySide，可按程序名过滤）
+- 服务故障（SCM 白名单 18 个 Error 级 ID，可按服务名过滤）
+- 磁盘 / 文件系统报错与掉盘
+- 登录审计（4624/4625/4740，需管理员，非管理员显式降级）
+- 自定义查询（ids / level / provider 正则 / msg 子串，全结构化校验）
+- 单条详情与完整原文（recordId 直取）
+
+体积硬规则：top=100 上限、来源/ID 折叠计数表、简述截 200 字符、
+total + notice 说明截断——坏机器一天几千条时上下文不失控。
 
 ## 非功能需求
 

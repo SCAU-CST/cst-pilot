@@ -169,4 +169,8 @@ event({ scope, ... })
        会静默返回 0 条（NoMatchingEventsFound）而非报拒绝访问 ——
        若只靠错误分类，「没权限」会伪装成「没有登录事件」；
        故 security 做显式 admin 预检（isAdminPwsh，进程内缓存）后 notice 降级
-- [ ] 9. 收尾：doc/tool/eventlog.md + PRD 更新 + 工具描述打磨
+- [x] 9. 收尾：doc/tool/eventlog.md + PRD 更新 + 工具描述打磨
+       —— 2026-09-03。doc/tool/eventlog.md（维护者文档，含实测数据与取舍表）、
+       PRD R6 + 缺口关闭 + doc/tool/README.md 索引；工具描述加入与 sys 的分工提示；
+       全部 extensions 过 biome（沿用 pi 上游 biome.json 标准，2.3.5）：格式化 +
+       organizeImports + 清死代码/未用变量/implicit any，89+59 harness 回归全过

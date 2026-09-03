@@ -8,6 +8,7 @@ cst-pilot 自定义实现的五个扩展。供维护者阅读：设计背景、�
 | [disk.md](disk.md) | `disk.ts` | 存储分析：空间 / 信息 / 健康 / 占用 |
 | [sys.md](sys.md) | `sys.ts` | 系统检查：整机概况 / 进程 / GPU / 传感器 |
 | [startup.md](startup.md) | `startup.ts` | 开机自启盘点：注册表 / 启动文件夹 / 自启服务（独立工具，非 sys scope） |
+| [eventlog.md](eventlog.md) | `eventlog.ts` + `eventlog-core.ts` | 事件日志痕迹：最近错误/警告 / 开关机·蓝屏 / 崩溃 / 服务 / 磁盘 / 登录审计 / 自定义查询 / 单条原文 |
 | [wz-index.md](wz-index.md) | `wz-index.ts` | 跨扩展共享的 WizTree 大小账本（非工具，共享模块） |
 
 ## 共性约定
@@ -65,5 +66,12 @@ scope 适合**同质子功能的聚合**（都是实时负载/存储采集，共
 ### 注册机制
 
 `extensions\` 下的 `.ts` 由 pi 自动加载，default export 接收 `pi`，调 `pi.registerTool()` 注册。
-共享模块（如 wz-index.ts）提供一个空 factory 让加载器安静。
+共享模块（如 wz-index.ts、eventlog-core.ts）提供一个空 factory 让加载器安静。
 同名注册覆盖内置工具（ls 即用此机制）。
+
+### 代码风格
+
+biome 统一检查（配置在仓库根 `biome.json`，沿用 pi 上游标准：schema 2.3.5，
+tab 缩进、行宽 120、recommended lint；`noExplicitAny` / `noControlCharactersInRegex`
+等按扩展场景关闭）。运行：`npx @biomejs/biome@2.3.5 check agent/home/extensions`。
+改动扩展后跑直连 harness（`tests/_t*.mjs`）确认行为无回归。
