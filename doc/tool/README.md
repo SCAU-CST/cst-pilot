@@ -9,6 +9,7 @@ cst-pilot 自定义实现的五个扩展。供维护者阅读：设计背景、�
 | [sys.md](sys.md) | `sys.ts` | 系统检查：整机概况（含机型/内存池）/ 进程 / 磁盘 IO / GPU（含适配器清单）/ 传感器 |
 | [startup.md](startup.md) | `startup.ts` | 开机自启盘点：注册表 / 启动文件夹 / 自启服务（独立工具，非 sys scope） |
 | [eventlog.md](eventlog.md) | `eventlog.ts` + `eventlog-core.ts` | 事件日志痕迹：最近错误/警告 / 开关机·蓝屏 / 崩溃 / 服务 / 磁盘 / 登录审计 / 自定义查询 / 单条原文 |
+| [driver.md](driver.md) | `driver.ts` + `driver-core.ts` | 设备驱动健康：异常设备 / Net·蓝牙·音频·显示现状 / 外设与可移动存储 / 指定设备查询 |
 | [wz-index.md](wz-index.md) | `wz-index.ts` | 跨扩展共享的 WizTree 大小账本（非工具，共享模块） |
 
 ## 共性约定

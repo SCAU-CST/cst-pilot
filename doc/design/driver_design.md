@@ -186,8 +186,16 @@ core 约 3-4s，external 约 1-2s，find 同 problem 路径。
 
 ## 里程碑
 
-- [ ] problem（默认 + 无 scope 兜底），测试 `tests/_t9.mjs`
-- [ ] core（Net / Bluetooth / Audio / 显示）
-- [ ] external（外置设备 + 可移动存储）
-- [ ] find（name / class / id 过滤）
-- [ ] `doc\tool\driver.md`，同步 PRD 和 tool README
+- [x] problem（默认 + 无 scope 兜底），测试 `tests/_t12.mjs` —— 2026-09-03 全量落地（四 scope 同日完成，harness 25 项全过）
+- [x] core（Net / Bluetooth / Audio / 显示）
+- [x] external（外置设备 + 可移动存储）
+- [x] find（name / class / id 过滤）
+- [x] `doc\tool\driver.md`，同步 PRD 和 tool README
+
+## 实测（2026-09-03，写入 harness 与 doc\tool\driver.md）
+
+- 耗时：problem 0.9s / core 4.9s / external 1.0s / find 约 1s，全部在秒级约束内
+- find 引号嵌套坑：WQL 字符串字面量必须双引号（外层 -Filter 单引号包裹），
+  内层单引号会静默拆散过滤条件（首版命中量异常而未报错）
+- PhysicalAdapter 本机无区分度（VMware/Wintun 也 True），验证了「只展示不剔除」的决策
+- USB\ LIKE 连带 USBSTOR\（U 盘存储节点），属预期覆盖
