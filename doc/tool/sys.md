@@ -1,4 +1,4 @@
-# sys — 系统检查工具（R1–R4）
+# sys — 系统检查工具（R1–R4 + 覆盖面复盘）
 
 实现：`agent\home\extensions\sys.ts`。需求见 `doc\PRD.md`，设计见 `doc\design\sys_design.md`。
 
@@ -9,16 +9,19 @@ CPU 是否跑满、GPU 忙不忙、温度是否异常"——属于**运行时状
 此前无工具可答。
 
 R1（进程盘点）、R2（GPU 状态）、R3（传感器）、R4（整机概况）是 sys
-已实现的前四个 scope。scope 即工具内部的子功能开关：`sys` 只注册
-一个工具名，调用时用 `scope` 参数选择查整机、查进程、查 GPU 还是
-查传感器（架构选型见 sys_design.md）。
+已实现的前四个 scope。此后按覆盖面复盘（`doc\Todo.md` 2026-09-03）
+补齐七项：`io`（磁盘瓶颈定位）、gpu 核显降级与适配器清单、proc
+可执行路径、overview 内存池与机型信息、计数器重试。scope 即工具内
+的子功能开关：`sys` 只注册一个工具名，调用时用 `scope` 参数选择查
+整机、查进程、查磁盘 IO、查 GPU 还是查传感器（架构选型见
+sys_design.md）。
 
 ## 调用方式
 
 | 参数 | 必填 | 说明 |
 |---|---|---|
-| `scope` | 否 | `overview`=整机概况（默认）；`proc`=进程盘点；`gpu`=GPU 状态；`sensor`=温度/风扇/电压（R5 自启盘点不在 sys 内，独立工具 startup） |
-| `top` | 否 | Top N，默认 10，上限 50，仅 proc/gpu 有效 |
+| `scope` | 否 | `overview`=整机概况（默认）；`proc`=进程盘点；`io`=磁盘 IO 定位；`gpu`=GPU 状态；`sensor`=温度/风扇/电压（R5 自启盘点不在 sys 内，独立工具 startup） |
+| `top` | 否 | Top N，默认 10，上限 50，仅 proc/gpu/io 有效 |
 
 
 ## LLM 收到的提示词
@@ -32,9 +35,10 @@ R1（进程盘点）、R2（GPU 状态）、R3（传感器）、R4（整机概�
 系统提示词 `Guidelines:` 中的条目：
 
 ```
-- Use sys scope=overview (or omit scope) when the user asks whether the machine is loaded/ sluggish overall: gives RAM usage, total CPU load, pagefile pressure, and uptime in one snapshot.
+- Use sys scope=overview (or omit scope) when the user asks whether the machine is loaded/ sluggish overall: gives RAM usage, total CPU load, pagefile pressure, kernel memory pool, machine model (vendor/model/CPU/BIOS), and uptime in one snapshot.
 - Use sys scope=proc when the user asks who is using memory/CPU or whether a process is hogging resources.
-- Use sys scope=gpu when the user asks about GPU load, VRAM usage, or GPU temperature.
+- Use sys scope=io when the machine feels slow but CPU and memory look idle: shows per-disk busy/queue/read-write throughput and which processes are doing disk IO.
+- Use sys scope=gpu when the user asks about GPU load, VRAM usage, GPU temperature, or which graphics card the machine has (adapters list shows real and virtual display adapters).
 - Use sys scope=sensor when the user asks about temperatures, fans, voltages, or overheating (provides GPU sensors, thermal zones, and CPU throttling percentage; CPU core temps need a kernel driver and are unavailable).
 ```
 
@@ -43,11 +47,11 @@ Function schema（每次请求的 tools 数组中）：
 ```jsonc
 {
   "name": "sys",
-  "description": "只读系统检查工具，按 scope 选择子功能（不传默认 overview）：overview=整机负载快照（内存/CPU 总占用/页面文件/开机时长）；proc=进程内存与 CPU 占用 Top N；gpu=每进程 GPU 利用率与专用显存排行（有 NVIDIA 时附显卡状态）；sensor=温度/风扇/电压/降频信号（过热诊断）。详细指南与诊断交叉印证链见 skill「sys」。",
+  "description": "只读系统检查工具，按 scope 选择子功能（不传默认 overview）：overview=整机负载快照（内存/CPU/页面文件/内存池/机型/开机时长）；proc=进程内存与 CPU 占用 Top N（含可执行文件路径）；io=每盘队列/吞吐 + 每进程 IO 速率 Top N（磁盘瓶颈定位）；gpu=每进程 GPU 利用率与显存排行（附适配器清单；有 NVIDIA 时附显卡状态，无 NVIDIA 时附核显/其他卡传感器）；sensor=温度/风扇/电压/降频信号（过热诊断）。详细指南与诊断交叉印证链见 skill「sys」。",
   "parameters": {
     "type": "object",
     "properties": {
-      "scope": { "type": "string", "enum": ["overview", "proc", "gpu", "sensor"] },
+      "scope": { "type": "string", "enum": ["overview", "proc", "gpu", "sensor", "io"] },
       "top":   { "type": "number", "description": "可选，Top N 进程数，默认 10，上限 50。" }
     }
   }
@@ -72,6 +76,16 @@ sys({ scope: "overview" })   // 不传 scope 时兜底此项
     "pagefile": [                       // 页面文件（可多个）
       { "name": "C:\\pagefile.sys", "allocMB": 10240, "usedMB": 202, "peakMB": 251 }
     ],
+    "pool": {                           // 内核内存池（驱动泄漏定位）
+      "nonpagedMB": 1388,               // 不可换出；持续异常增长多为驱动泄漏
+      "pagedMB": 777
+    },
+    "machine": {                        // 机型（品牌机决定已知问题清单，实测本机）
+      "vendor": "Maxsun", "model": "Default string",
+      "cpu": "12th Gen Intel(R) Core(TM) i5-12600KF", "physicalCores": 10,
+      "bios": "American Megatrends International, LLC. H7.4G",
+      "biosDate": "2025-02-23"
+    },
     "uptime": {
       "bootTime": "2026-09-01 10:36",   // 开机时间
       "text": "11小时11分",              // 人类可读时长，可直接转述
@@ -82,8 +96,13 @@ sys({ scope: "overview" })   // 不传 scope 时兜底此项
 }
 ```
 
-实测 2.5 秒返回（含 1 秒 CPU 差分窗口；本进程首次调用额外有 WMI 预热，
-可达 10 秒）。免管理员。
+实测热调用约 4 秒（含 1 秒 CPU 差分窗口；本进程首次调用额外有 WMI
+预热，可达 10 秒）。免管理员。
+
+pool 与 machine 的判读：内存高但 proc.byMem 对不上大户 → 看
+`pool.nonpagedMB`（不可换出的内核内存，持续异常增长 = 驱动泄漏）；
+现场按 `machine.vendor + model` 匹配机型已知问题（散热缺陷、
+OEM 预装坑），这是品牌机维修的第一步。
 
 ## scope=proc：谁在吃内存和 CPU
 
@@ -98,16 +117,17 @@ sys({ scope: "proc", top: 3 })
     "totalProcs": 276,
     "intervalSec": 1.44,                // 实际采样间隔（Stopwatch 计时）
     "byCpu": [                          // CPU 占用率 Top N
-      { "name": "com.docker.backend", "pid": 24320, "wsMB": 126, "cpuPct": 5.4 },
-      { "name": "node",  "pid": 19004, "wsMB": 393, "cpuPct": 0.8 },
-      { "name": "node",  "pid": 22276, "wsMB": 324, "cpuPct": 0.7 }
+      { "name": "com.docker.backend", "pid": 24320, "wsMB": 126, "cpuPct": 5.4,
+        "path": "C:\\Program Files\\Docker\\Docker\\resources\\com.docker.backend.exe" },
+      { "name": "node",  "pid": 19004, "wsMB": 393, "cpuPct": 0.8, "path": "C:\\Program Files\\nodejs\\node.exe" },
+      { "name": "node",  "pid": 22276, "wsMB": 324, "cpuPct": 0.7, "path": "C:\\Program Files\\nodejs\\node.exe" }
     ],
     "byMem": [                          // 内存（工作集）Top N
-      { "name": "node",   "pid": 10224, "wsMB": 1425, "cpuPct": 0 },
-      { "name": "Weixin", "pid": 22456, "wsMB": 528,  "cpuPct": 0.1 },
-      { "name": "node",   "pid": 19004, "wsMB": 393,  "cpuPct": 0.8 }
+      { "name": "node",   "pid": 10224, "wsMB": 1425, "cpuPct": 0, "path": "C:\\Program Files\\nodejs\\node.exe" },
+      { "name": "Weixin", "pid": 22456, "wsMB": 528,  "cpuPct": 0.1, "path": null },
+      { "name": "node",   "pid": 19004, "wsMB": 393,  "cpuPct": 0.8, "path": "C:\\Program Files\\nodejs\\node.exe" }
     ],
-    "notice": "进程 276 个，采样间隔 1.44s（16 逻辑核）。byCpu=CPU 占用率 Top N；byMem=内存（工作集）Top N。cpuPct 为采样窗口内的平均值，瞬时突发可能低估。"
+    "notice": "进程 276 个，采样间隔 1.44s（16 逻辑核）。byCpu=CPU 占用率 Top N；byMem=内存（工作集）Top N。cpuPct 为采样窗口内的平均值，瞬时突发可能低估。path=可执行文件路径（系统进程或权限不足时为 null，可用于就地验证进程身份）。"
   }
 }
 ```
@@ -138,18 +158,52 @@ sys({ scope: "gpu", top: 3 })
       { "pid": 1140,  "name": "dwm",            "dedicatedMB": 2827 },
       { "pid": 18492, "name": "msedgewebview2", "dedicatedMB": 484 }
     ],
+    "adapters": [                       // 显卡适配器清单（含虚拟显示，实测本机）
+      { "name": "GameViewer Virtual Display Adapter", "vendor": "GameViewer", "driver": "15.6.5.199", "status": "OK", "bus": "ROOT" },
+      { "name": "NVIDIA GeForce RTX 5070 Ti", "vendor": "NVIDIA", "driver": "32.0.15.9186", "status": "OK", "bus": "PCI" }
+      // bus=PCI 为实体卡插槽设备（PNPDeviceID 以 PCI\ 开头）；ROOT/USB 等多为虚拟显示、采集卡、USB 显卡
+    ],
     "nvidia": {                         // nvidia-smi 附带；无 NVIDIA 显卡时为 null
       "name": "NVIDIA GeForce RTX 5070 Ti",
       "tempC": 51, "powerW": 33.5,
       "vramUsedMB": 7490, "vramTotalMB": 16303,
       "utilPct": 4, "driver": "591.86"
     },
-    "notice": "GPU Engine 452 个实例按进程聚合。byGpuPct=GPU 利用率 Top N（engtypes=所用引擎类型…）；byDedicatedMB=专用显存 Top N；nvidia=NVIDIA 显卡状态（无 NVIDIA 则为 null）。gpuPct 为瞬时采样，可与 proc 的 cpuPct 交叉印证。"
+    "notice": "GPU Engine 452 个实例按进程聚合。byGpuPct=GPU 利用率 Top N（engtypes=所用引擎类型…）；byDedicatedMB=专用显存 Top N；adapters=显卡适配器清单（bus=PCI 为实体卡插槽设备，ROOT 多为虚拟显示适配器；真实显卡以 vendor 为硬件厂商的那条为准）；nvidia=NVIDIA 独显状态。gpuPct 为瞬时采样，可与 proc 的 cpuPct 交叉印证。"
   }
 }
 ```
 
-实测 3.7 秒返回（两路数据源并行取）。
+实测约 3.9 秒返回（两路数据源并行取 + 适配器清单顺带）。
+
+### 无 NVIDIA 的机器：lhmGpu 降级
+
+`nvidia: null` 只说明「未检出 NVIDIA 独显」（nvidia-smi 不存在），
+不代表没有显卡。核显机的 GPU 健康由 `lhmGpu` 补位（LHM 用户态，
+只开 GPU，取温度 / 负载 / 频率 / 显存等原始传感器读数）：
+
+```jsonc
+{
+  "gpu": {
+    "engineSamples": 120,
+    "byGpuPct": [ "…同上，GPU Engine 计数器对核显同样有效…” ],
+    "byDedicatedMB": [ "…同上…” ],
+    "nvidia": null,
+    "lhmGpu": {
+      "hardware": ["Intel(R) UHD Graphics 770"],
+      "sensors": [
+        { "hw": "Intel(R) UHD Graphics 770", "name": "GPU Core", "type": "Temperature", "value": 47 },
+        { "hw": "Intel(R) UHD Graphics 770", "name": "GPU Core", "type": "Load", "value": 3.1 }
+      ]
+    }
+  }
+}
+```
+
+- `lhmGpu.hardware` 为空 = 本机无可读 GPU 传感器（LHM 对部分老核显
+  不支持），**不代表没有显卡**——此时 GPU Engine 计数器（byGpuPct）
+  仍在，每进程利用率照样可用
+- 有 NVIDIA 独显的机器不出此字段（独显状态由 nvidia-smi 提供，更准）
 
 ## scope=sensor：温度、风扇、电压、降频（三路免安装数据源）
 
@@ -186,6 +240,9 @@ sys({ scope: "sensor" })
       "avgPctOfMax": 94.3
       // min 低 + CPU 负载高 = 过热/功耗降频的直接信号
     },
+    // counterErrors 仅在计数器读取失败时出现：
+    // "counterErrors": { "thermal": "<原因>", "frequency": null }
+    // 对应字段为空是读取失败，不代表机器没有热区/降频计数器
     "notice": "sensors=LHM 可读传感器（GPU 等，免管理员）；thermalZones=主板热区（passivePct<100 表示该热区正在被动降热）；frequency=各核频率占最大频率百分比（minPctOfMax 低 + 负载高 = 过热/功耗降频的直接信号）。CPU 核心温度需内核驱动（PawnIO），零安装约束下不可得，用降频信号替代。（硬件：…）"
   }
 }
@@ -211,6 +268,41 @@ CPU 核心温度只能读 CPU 内部 MSR（需内核驱动）。两条路线都�
 CPU 硬件枚举正常（55 个传感器，Load 有值）但 Temperature/Clock/Power 全空；
 DLL 字符串扫描确认 LHM 0.9.6 无 WinRing0、有 PawnIO 引用。这条链排除了
 “提权就能解决”的误判。
+
+## scope=io：电脑卡但 CPU 内存都闲——谁在读写磁盘
+
+现场"电脑卡"最常见的原因不是 CPU / 内存满，而是磁盘 IO 打满——
+disk 管容量、proc 管计算资源，谁都答不了"谁在吃 IO"。本 scope 补上：
+
+```
+sys({ scope: "io", top: 5 })
+```
+
+```jsonc
+{
+  "io": {
+    "intervalSec": 2.2,                  // 实际采样窗口（Stopwatch 计时）
+    "disks": [                           // 每物理盘实时 IO，按忙碌度降序
+      { "disk": "1 C: D: E:", "queueLen": 0, "busyPct": 7, "readKBs": 30599, "writeKBs": 126 },
+      { "disk": "0 F: G:",    "queueLen": 0, "busyPct": 0, "readKBs": 12,    "writeKBs": 3 }
+    ],
+    "byIo": [                            // 每进程读+写 IO 速率 Top N（仅列有活动的）
+      { "name": "MsMpEng",       "pid": 3340,  "ioKBs": 8421.3 },
+      { "name": "chrome",        "pid": 15028, "ioKBs": 1339.6 },
+      { "name": "SearchIndexer", "pid": 5204,  "ioKBs": 402.1 }
+    ],
+    "totalProcs": 276,
+    "notice": "disks=每物理盘实时 IO（busyPct=磁盘忙碌百分比，持续 >80 或 queueLen 持续 >1 = IO 瓶颈…）；byIo=…。与 disk 的分工：disk 管容量与硬件健康，io 管\"现在谁在读写\"。"
+  }
+}
+```
+
+实测热调用 2.8 秒（本进程首次调用额外有 WMI 磁盘计数器预热，
+可达 10 秒，与 overview 冷启动同源）。免管理员。
+
+判读：busyPct 持续高 + queueLen 持续 > 1 = IO 瓶颈，
+byIo 榜首即嫌疑人；机械盘 busyPct 长期接近 100% 而吞吐不高，
+指向碎片或坏盘前兆（交叉 disk 的 SMART）。
 
 ## 实现
 
@@ -240,13 +332,15 @@ cpuPct = 100 × (t2 − t1) / 实际间隔秒 / 逻辑核数
 
 ### overview：格式化计数器类双读
 
-一条 pwsh 命令内取四路，除 CPU 占用率外均为纯快照：
+一条 pwsh 命令内取六路，除 CPU 占用率外均为纯快照：
 
 | 数据 | 来源 |
 |---|---|
 | CPU 总占用率 | `Win32_PerfFormattedData_PerfOS_Processor`（`_Total` 实例，读两次取第二次） |
 | 物理内存 | `Win32_OperatingSystem`（`TotalVisibleMemorySize` / `FreePhysicalMemory`） |
 | 页面文件 | `Win32_PageFileUsage`（分配/当前/峰值用量） |
+| 内核内存池 | `Win32_PerfFormattedData_PerfOS_Memory`（PoolNonpaged/PagedBytes，即时值单读即可） |
+| 机型 | `Win32_ComputerSystem`（厂商/型号）+ `Win32_BIOS` + `Win32_Processor`（CPU 型号/物理核数） |
 | 开机时长 | `Win32_OperatingSystem.LastBootUpTime` 与当前时间差 |
 
 CPU 总占用率不用 `Get-Counter`：英文计数器路径在本机中文系统可用
@@ -257,11 +351,13 @@ CPU 总占用率不用 `Get-Counter`：英文计数器路径在本机中文系�
 **读两次**：格式化计数器类的首读是 provider 启动以来的累计值，不可信；
 预读一次弃用，隔 1 秒再读才是真实的近 1 秒差分。
 
-### gpu：三路数据并行
+### gpu：两路计数器 + 适配器清单 + nvidia-smi 并行
 
 ```ts
 Promise.all([runPwsh(GPU_CMD), nvidiaStatus()])
 ```
+
+（GPU_CMD 内含计数器两路 + 适配器清单，见下。）
 
 **路 1：GPU Engine 计数器**（Windows 性能计数器，任务管理器同源）。
 计数路径 `\GPU Engine(*)\Utilization Percentage`，实例名格式
@@ -275,7 +371,35 @@ Promise.all([runPwsh(GPU_CMD), nvidiaStatus()])
 **路 3：nvidia-smi**（NVIDIA 驱动自带，`System32\nvidia-smi.exe`）。
 一条查询拿全温度/功耗/显存/利用率/驱动版本；`existsSync` 检测存在才调用。
 
+**路 4：适配器清单**（`Win32_VideoController`，实测 <0.1s，并入同一条
+pwsh 命令顺带）。输出 name/vendor/driver/status/bus；bus 取自
+PNPDeviceID 首段（PCI/ROOT/USB…），谁是真实显卡留给模型按
+vendor/name 判断，不在此硬编码。虚拟显示适配器（串流/投屏软件装
+的）在清单里一目了然——这正是“4 适配器 3 个是虚拟显示”场景的
+直接答案，也顺带澄清 `nvidia: null` 的语义（机器不是没有显卡）。
+
+**计数器偶发失败重试**：GPU Engine 计数器实测偶发无效采样，
+`collectGpu` 对失败结果重试 1 次再收敛 `{error}`（只重试计数器命令，
+nvidia-smi 不重试；连续失败说明计数器真坏了，重试多次只会拉长
+等待）。
+
 pid→进程名映射：两路计数器实例合并后对去重 pid 逐个 `Get-Process -Id`，查一次缓存。
+
+### io：同窗口双差分
+
+一条 pwsh 命令内，两路数据共用同一个采样窗口（Stopwatch 计真实间隔）：
+
+| 数据 | 来源 |
+|---|---|
+| 每进程 IO 速率 | `Win32_Process` 的 `Read/WriteTransferCount`（进程启动以来累计值），两次快照差分 ÷ 实际窗口 |
+| 每盘队列 / 忙碌 / 吞吐 | `Win32_PerfFormattedData_PerfDisk_PhysicalDisk` 格式化计数器类，首读丢弃取第二次，busyPct = 100 − PercentIdleTime |
+
+- 进程 IO 不走 `PerfProc` 计数器表（实测 7.8s 过慢，与 proc 同教训）；
+  `Win32_Process` 是普通 CIM 枚举，亚秒级
+- 计数器类名不随系统语言本地化（同 overview 模式）
+- 两采样间退出 / 新建的进程自然跳过；`byIo` 只列速率 > 0 的进程，
+  瞬时空闲的机器可能为空数组（合法数据，不是错误）
+- `_Total` 磁盘实例丢弃，只报物理盘
 
 ### sensor：三路数据源，全部免安装
 
@@ -300,6 +424,11 @@ pid→进程名映射：两路计数器实例合并后对去重 pid 逐个 `Get-
   返回 -273.15°C 之类的伪值）
 - **PawnIO 探测**：查注册表 Services 键，装入且管理员时 LHM 自然给出
   CPU/主板传感器（sensors 里多出来的项），notice 会说明
+- **计数器失败不静默**：热区/降频计数器读取失败时记录原因到
+  `counterErrors`（仅失败时出现）。不自动重试：无法区分"机器本来
+  就没有这类计数器"与"偶发失败"，重试无判据；透出原因让模型
+  知情后自行决定（与 gpu 的重试不同：GPU Engine 是已知必有的
+  计数器，失败必属偶发，重试才有意义）
 
 ## 取舍
 
@@ -317,6 +446,9 @@ pid→进程名映射：两路计数器实例合并后对去重 pid 逐个 `Get-
 | 降频信号替代 CPU 核心温度 | 装 PawnIO / 带 WinRing0 的旧 LHM | 前者违背零安装，后者被微软拦（CVE-2020-14979）；降频是过热的直接后果，诊断上更接近结论 |
 | 热区合理性过滤（-50~150°C） | 原样上报 | ACPI 缺传感器时返回伪值，污染上下文 |
 | 每进程聚合 + engtypes 清单 | 保留每引擎明细 | 明细 452 行会淹没模型；聚合后 10 行 + 类型清单信息量足够 |
+| 适配器清单并入 GPU_CMD 同一条命令 | 单独一路并行 runPwsh | Win32_VideoController 实测 <0.1s，命令内顺带远快于多起一个 pwsh 进程 |
+| GPU 计数器失败在 Node 侧重试 1 次 | pwsh 内重试 / 不重试 / 重试多次 | 失败必属偶发（计数器组已知必有），1 次已覆盖实测场景；连续失败是真故障，多次重试只会拉长等待 |
+| sensor 计数器失败透出 counterErrors 而非重试 | 静默空数组 / 盲目重试 | 热区/降频计数器不是机器必有（低端主板可能没有），重试无判据；透出原因让模型知情 |
 | 无 scope 兜底 overview | scope 必填 | “电脑现在怎么样”是最常见的开场问题，一次调用必有答案；schema 也更省模型选择成本 |
 
 ### 实测排除的坑
@@ -341,6 +473,22 @@ Windows 性能计数器名称理论上随系统语言本地化
   热区温度的身份（CPU 还是主板）由 ACPI 命名决定（如 _TZ.CPUZ），
   本机只有 _TZ.TZ00 一个热区，语义需结合机器型号解读
 - `cpuTotalPct` 是近 1 秒差分，瞬时突发可能低估（与 proc.cpuPct 同理）
-- overview 首次调用含 WMI 提供程序预热，可能明显慢于后续调用（实测冷启动约 10 秒，热后 2.5 秒）
-- scope 枚举目前为 `overview` / `proc` / `gpu` / `sensor`；R5 自启盘点
+- adapters 的 bus 判据：PCI 为实体卡插槽设备；ROOT/USB 等其他值
+  多为虚拟显示/采集卡/USB 显卡，需按 name 二次判断（反例空间小
+  但非零，故不硬编码"哪条是真实显卡"）
+- GPU Engine 计数器偶发失败已加 1 次重试，连续失败仍收敛 `{error}`
+  （计数器真坏时无能为力，此时 adapters/nvidia 两路仍可用——
+  但当前失败即整体报错，二者被一并弃掉，属于已知粗糙点，
+  除非实测再次遇见否则不优化）
+- sensor 的 counterErrors 仅在计数器读取失败时出现；对应字段为空
+  是读取失败，不代表机器没有热区/降频计数器
+- 非法参数（scope 枚举外、top 非数字）由 pi 框架拦截：报错文本含
+  失败路径 + 错误说明 + 原始参数回显，模型可读可自纠（评估结论：
+  pi-ai validation.js `validateToolArguments`，无需工具层额外处理）
+- overview 首次调用含 WMI 提供程序预热，可能明显慢于后续调用（实测冷启动约 10 秒，热后约 4 秒——机型/内存池两路查询并入后热调用从 2.5 秒变到约 4 秒，换来的覆盖面值得）；
+  io 同理（磁盘计数器预热，冷约 10 秒，热后 2.8 秒）
+- io 的 byIo 仅列窗口内有 IO 活动的进程，全部空闲时为空数组（合法数据，不是错误）
+- lhmGpu 对部分老核显可能无传感器可读（hardware 为空，不代表没有显卡），
+  此时每进程 GPU 利用率（byGpuPct）仍可用
+- scope 枚举目前为 `overview` / `proc` / `gpu` / `sensor` / `io`；R5 自启盘点
   已剥离为独立工具 `startup`（见 `doc\tool\startup.md`）
