@@ -1,6 +1,5 @@
 # Design — eventlog 事件日志工具
 
-> 草案，留白待沟通，见文末「待拍板」。
 
 ## TLDR
 
@@ -135,22 +134,39 @@ event({ scope, ... })
 编号即顺序，1–2 是地基，后续 scope 逐个端到端；
 每步均按 sys 惯例用直连 harness（`tests/_t*.mjs`）验证。
 
-- [ ] 1. 核心链路：runPwsh + Get-WinEvent 下推
+- [x] 1. 核心链路：runPwsh + Get-WinEvent 下推
        （LogName / Level / StartTime / Id / ProviderName）
-- [ ] 2. 返回与体积：top / 来源·ID 折叠计数表 /
+       —— 2026-09-03，tests/_t9.mjs。实测：下推全部可用，Level 接受数组
+       （warn=@(1,2,3) / error=@(1,2)）；默认时间倒序；枚举必须
+       SilentlyContinue（毒事件=EventLogException 被跳过，Stop 会炸整条查询），
+       零命中与 provider 未匹配按 FQID 语言无关判据吸收（详见 core 文件头）
+- [x] 2. 返回与体积：top / 来源·ID 折叠计数表 /
        200 字符截断 / data.total + notice
-- [ ] 3. `recent`（首个端到端 scope，含缺省兜底）
-- [ ] 4. `boot` / `crash`：主力场景，白名单已对官方文档核定
-- [ ] 5. `service` / `disk`：白名单落地；
+       —— 2026-09-03，tests/_t9.mjs。折叠不变量 sum(counts.n)==total 实测成立；
+       注入校验（logNames/ids/providers 白名单拒绝 + 数字夹紧）全绿
+- [x] 3. `recent`（首个端到端 scope，含缺省兜底）
+       —— 2026-09-03，tests/_t10.mjs（无 scope 兜底 recent；level 默认 warn）
+- [x] 4. `boot` / `crash`：主力场景，白名单已对官方文档核定
+       —— 2026-09-03，tests/_t10.mjs。WHEA 精确名 = Microsoft-Windows-WHEA-Logger
+       （下推用全名），其声明 ID 19 与白名单 19 重叠 → boot 多组 OR +
+       $seen（logName/recordId）去重落地；crash 消息子串过滤实测
+- [x] 5. `service` / `disk`：白名单落地；
        service 用本机 SCM 提供者反查事件 ID 作终验
-- [ ] 6. `query`：结构化自定义查询 + 逐字段注入校验
-- [ ] 7. `detail`：recordId / id 直取原文
-- [ ] 8. `security`【待拍板是否本期】：权限降级实测
+       —— 2026-09-03，tests/_t10.mjs。SCM ListProvider 全表交叉核对通过
+       （声明 ID 高位编码 0xC0000000+N，解码后白名单全 Error 级；7025 本机表
+       未声明，按设计保留；排除项 7035/7036/7039/7040/7042/7044 确为信息级）
+- [x] 6. `query`：结构化自定义查询 + 逐字段注入校验
+       —— 2026-09-03，tests/_t10.mjs。provider 正则带 1s MatchTimeout
+       （防灾难性回溯，编译失败结构化上报）；msg 用 IndexOf
+       OrdinalIgnoreCase（零回溯）；ids/level/logName 白名单校验
+- [x] 7. `detail`：recordId / id 直取原文
+       —— 2026-09-03，tests/_t10.mjs。recordId 走 EventRecordID XPath 模板
+       （PS 属性叫 RecordId，XML 元素是 EventRecordID）；模板写死、仅插入整数
+       校验后的值，与 FilterHashtable 插值同安全模型，无模型可控过滤表达式；
+       原文保留换行，20k 字符封顶并标记
+- [x] 8. `security`【已拍板本期实现（2026-09-03）】：权限降级实测
+       —— tests/_t10.mjs。关键实测：非管理员下 FilterHashtable 查 Security
+       会静默返回 0 条（NoMatchingEventsFound）而非报拒绝访问 ——
+       若只靠错误分类，「没权限」会伪装成「没有登录事件」；
+       故 security 做显式 admin 预检（isAdminPwsh，进程内缓存）后 notice 降级
 - [ ] 9. 收尾：doc/tool/eventlog.md + PRD 更新 + 工具描述打磨
-
-## 待拍板
-
-- `security` 是否本期
-- `top` 上限（默认 100 已定，上限 200?）
-- `query` 的 msg 后置量级上限（防全通道扫描过慢）
-- scope 专属参数命名
