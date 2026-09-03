@@ -18,13 +18,14 @@
  * R5（开机自启盘点）已从 sys 剥离为独立工具 startup.ts（配置盘点与实时
  * 负载不属一类问题，单独注册边界更清晰）。无 scope 时兜底 overview。
  */
-import { Type } from "typebox";
-import { StringEnum } from "@earendil-works/pi-ai";
+
 import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { existsSync } from "node:fs";
+import { promisify } from "node:util";
+import { StringEnum } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 
 const execFileP = promisify(execFile);
 
@@ -386,9 +387,7 @@ export default function (pi: any) {
 		],
 		parameters: Type.Object({
 			scope: Type.Optional(StringEnum(["overview", "proc", "gpu", "sensor"] as const)),
-			top: Type.Optional(
-				Type.Number({ description: "可选，Top N 进程数，默认 10，上限 50。" }),
-			),
+			top: Type.Optional(Type.Number({ description: "可选，Top N 进程数，默认 10，上限 50。" })),
 		}),
 
 		async execute(_toolCallId: string, params: { scope?: string; top?: number }) {

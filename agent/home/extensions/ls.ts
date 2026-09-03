@@ -16,9 +16,10 @@
  * 文件兜底：pagefile.sys 等系统独占文件 statSync 返回假 0，用 MFT 文件行兜底。
  * 结构只读：临时 CSV 写自家 wiztree\tmp 并即时删除。
  */
-import { Type } from "typebox";
-import { existsSync, readdirSync, statSync, promises as fsp } from "node:fs";
+
+import { existsSync, promises as fsp, readdirSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { Type } from "typebox";
 import { ensureIndex, normPath } from "./wz-index";
 
 const TOP_DEFAULT = 20;
@@ -37,10 +38,13 @@ function fmtSize(bytes: number): string {
 
 /* ---------------- 降级路径：递归累计 ---------------- */
 
-async function walkSize(dir: string, budget: { files: number; deadline: number }): Promise<{ bytes: number; complete: boolean }> {
+async function walkSize(
+	dir: string,
+	budget: { files: number; deadline: number },
+): Promise<{ bytes: number; complete: boolean }> {
 	let bytes = 0;
 	let complete = true;
-	let entries;
+	let entries: import("node:fs").Dirent[] | undefined;
 	try {
 		entries = await fsp.readdir(dir, { withFileTypes: true });
 	} catch {
@@ -85,9 +89,7 @@ export default function (pi: any) {
 		],
 		parameters: Type.Object({
 			path: Type.String({ description: "要浏览的目录路径" }),
-			top: Type.Optional(
-				Type.Number({ description: `返回前 N 项（默认 ${TOP_DEFAULT}，最大 ${TOP_MAX}）` }),
-			),
+			top: Type.Optional(Type.Number({ description: `返回前 N 项（默认 ${TOP_DEFAULT}，最大 ${TOP_MAX}）` })),
 		}),
 		async execute(_id: string, params: { path: string; top?: number }) {
 			const target = resolve(params.path);
@@ -95,11 +97,13 @@ export default function (pi: any) {
 			if (!existsSync(target)) {
 				return { content: [{ type: "text", text: JSON.stringify({ error: `路径不存在: ${target}` }) }] };
 			}
-			let st;
+			let st: import("node:fs").Stats | undefined;
 			try {
 				st = statSync(target);
 			} catch (e: any) {
-				return { content: [{ type: "text", text: JSON.stringify({ error: `无法读取: ${String(e?.message ?? e)}` }) }] };
+				return {
+					content: [{ type: "text", text: JSON.stringify({ error: `无法读取: ${String(e?.message ?? e)}` }) }],
+				};
 			}
 			if (!st.isDirectory()) {
 				return { content: [{ type: "text", text: JSON.stringify({ error: `不是目录: ${target}` }) }] };
@@ -109,7 +113,9 @@ export default function (pi: any) {
 			try {
 				names = readdirSync(target);
 			} catch (e: any) {
-				return { content: [{ type: "text", text: JSON.stringify({ error: `无法列出: ${String(e?.message ?? e)}` }) }] };
+				return {
+					content: [{ type: "text", text: JSON.stringify({ error: `无法列出: ${String(e?.message ?? e)}` }) }],
+				};
 			}
 
 			const { dirs, files } = await ensureIndex(target);

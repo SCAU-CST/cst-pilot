@@ -41,9 +41,9 @@
  *   消息子串用 IndexOf OrdinalIgnoreCase（无正则，零回溯风险）
  */
 import { execFile } from "node:child_process";
-import { promisify } from "node:util";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 
 const execFileP = promisify(execFile);
 
@@ -155,7 +155,7 @@ export function buildSpec(raw: {
 }): CoreQuery {
 	// logNames：必填，字符串数组（元素必须 string：白名单字段的注入面一律拒绝而非强转）
 	if (!Array.isArray(raw.logNames) || raw.logNames.length === 0) {
-		throw new Error("logNames 必须是非空数组，如 [\"System\"]");
+		throw new Error('logNames 必须是非空数组，如 ["System"]');
 	}
 	for (const x of raw.logNames) {
 		if (typeof x !== "string") {
@@ -187,10 +187,21 @@ export function buildSpec(raw: {
 	}
 
 	// ids / providers / msgLike / providerRe：白名单校验在 finalize 统一做
-	return finalize({ logNames, hours, top, level, ids: raw.ids, providers: raw.providers, msgLike: raw.msgLike, providerRe: raw.providerRe });
+	return finalize({
+		logNames,
+		hours,
+		top,
+		level,
+		ids: raw.ids,
+		providers: raw.providers,
+		msgLike: raw.msgLike,
+		providerRe: raw.providerRe,
+	});
 }
 
-function finalize(q: Omit<CoreQuery, "ids" | "msgLike" | "providerRe"> & { ids?: unknown; msgLike?: unknown; providerRe?: unknown }): CoreQuery {
+function finalize(
+	q: Omit<CoreQuery, "ids" | "msgLike" | "providerRe"> & { ids?: unknown; msgLike?: unknown; providerRe?: unknown },
+): CoreQuery {
 	let ids: number[] | undefined;
 	if (q.ids !== undefined && q.ids !== null) {
 		if (!Array.isArray(q.ids)) throw new Error("ids 必须是数字数组，如 [41, 6008]");
@@ -245,8 +256,8 @@ function finalize(q: Omit<CoreQuery, "ids" | "msgLike" | "providerRe"> & { ids?:
 
 	const out: CoreQuery = { logNames: q.logNames, hours: q.hours, top: q.top };
 	if (q.level) out.level = q.level;
-	if (ids && ids.length) out.ids = ids;
-	if (providers && providers.length) out.providers = providers;
+	if (ids?.length) out.ids = ids;
+	if (providers?.length) out.providers = providers;
 	if (msgLike) out.msgLike = msgLike;
 	if (providerRe) out.providerRe = providerRe;
 	return out;
@@ -329,11 +340,17 @@ export function buildEventQueryCmd(specs: CoreQuery | CoreQuery[]): string {
 	lines.push(`    $tc = $_.TimeCreated.ToString('yyyy-MM-dd HH:mm')`);
 	lines.push(`    $k = "$prov/$eid"`);
 	lines.push(`    $c = $counts[$k]`);
-	lines.push(`    if ($c) { $c.n++; if ($tc -gt $c.last) { $c.last = $tc } } else { $counts[$k] = @{ n = 1; last = $tc; prov = $prov; id = $eid } }`);
+	lines.push(
+		`    if ($c) { $c.n++; if ($tc -gt $c.last) { $c.last = $tc } } else { $counts[$k] = @{ n = 1; last = $tc; prov = $prov; id = $eid } }`,
+	);
 	lines.push(`    if ($kept -lt $top) {`);
 	lines.push(`      if (-not $m) { $m = $_.Message }`);
-	lines.push(`      if ($m) { $m = ($m -replace '\\s+',' ').Trim(); if ($m.Length -gt ${MSG_MAX}) { $m = $m.Substring(0,${MSG_MAX}) + '…' } }`);
-	lines.push(`      $events.Add([pscustomobject]@{ logName = $_.LogName; time = $_.TimeCreated.ToString('yyyy-MM-dd HH:mm:ss'); recordId = $_.RecordId; level = $_.Level; provider = $prov; id = $eid; msg = $m })`);
+	lines.push(
+		`      if ($m) { $m = ($m -replace '\\s+',' ').Trim(); if ($m.Length -gt ${MSG_MAX}) { $m = $m.Substring(0,${MSG_MAX}) + '…' } }`,
+	);
+	lines.push(
+		`      $events.Add([pscustomobject]@{ logName = $_.LogName; time = $_.TimeCreated.ToString('yyyy-MM-dd HH:mm:ss'); recordId = $_.RecordId; level = $_.Level; provider = $prov; id = $eid; msg = $m })`,
+	);
 	lines.push(`      $kept++`);
 	lines.push(`    }`);
 	lines.push(`  }`);
@@ -450,12 +467,14 @@ export function levelName(n: unknown): string {
 export function truncateBrief(msg: unknown, max = MSG_MAX): string | null {
 	if (typeof msg !== "string") return null;
 	let m = msg.replace(/\s+/g, " ").trim();
-	if (m.length > max) m = m.slice(0, max) + "…";
+	if (m.length > max) m = `${m.slice(0, max)}…`;
 	return m.length > 0 ? m : null;
 }
 
 /** 核心查询：spec 归一化（单组或数组=多组 OR）→ 下推执行 → 收敛为 { data, notice } 或 { error } */
-export async function queryEvents(raw: Parameters<typeof buildSpec>[0] | Parameters<typeof buildSpec>[0][]): Promise<CoreResult> {
+export async function queryEvents(
+	raw: Parameters<typeof buildSpec>[0] | Parameters<typeof buildSpec>[0][],
+): Promise<CoreResult> {
 	const raws = Array.isArray(raw) ? raw : [raw];
 	let specs: CoreQuery[];
 	try {
@@ -473,9 +492,14 @@ export async function queryEvents(raw: Parameters<typeof buildSpec>[0] | Paramet
 
 	// 结构性错误（通道不存在等）：诚实报错，不吞。固定通道（System/Application）
 	// 正常不可达此路径；query 自定义通道的预校验见 queryDetail/runScope 的错误收敛。
-	const structural: string[] = Array.isArray(r.structural) ? r.structural.filter((s: unknown) => typeof s === "string" && s.trim()) : [];
+	const structural: string[] = Array.isArray(r.structural)
+		? r.structural.filter((s: unknown) => typeof s === "string" && s.trim())
+		: [];
 	if (structural.length > 0) {
-		return { error: `事件日志查询失败（${structural.length} 处）: ${truncateBrief(structural[0], 200)}`, admin: !!r.admin };
+		return {
+			error: `事件日志查询失败（${structural.length} 处）: ${truncateBrief(structural[0], 200)}`,
+			admin: !!r.admin,
+		};
 	}
 
 	const events: CoreEvent[] = (r.events as any[]).map((e) => {
@@ -519,16 +543,23 @@ export async function queryEvents(raw: Parameters<typeof buildSpec>[0] | Paramet
 
 	// notice：截断说明（设计硬规则：data.total + notice 说明截断）+ 字段导读
 	const parts: string[] = [];
-	parts.push(`近 ${data.hours} 小时 ${data.logs.join(" + ")}${data.level ? `（level=${data.level} 及更严重）` : ""} 命中 ${data.total} 条`);
-	parts.push(data.truncated
-		? `已按 top=${data.top} 截断，仅显示最新 ${events.length} 条（时间倒序），更早的记录不在列表中`
-		: `显示全部 ${events.length} 条（时间倒序）`);
-	if (data.unreadable > 0) parts.push(`另有 ${data.unreadable} 条记录因消息资源损坏无法读取，已跳过（不影响其余统计）`);
+	parts.push(
+		`近 ${data.hours} 小时 ${data.logs.join(" + ")}${data.level ? `（level=${data.level} 及更严重）` : ""} 命中 ${data.total} 条`,
+	);
+	parts.push(
+		data.truncated
+			? `已按 top=${data.top} 截断，仅显示最新 ${events.length} 条（时间倒序），更早的记录不在列表中`
+			: `显示全部 ${events.length} 条（时间倒序）`,
+	);
+	if (data.unreadable > 0)
+		parts.push(`另有 ${data.unreadable} 条记录因消息资源损坏无法读取，已跳过（不影响其余统计）`);
 	if (data.noMatch.includes("provider-not-found")) parts.push("查询条件中的提供程序在本机不存在");
 	if (data.noMatch.includes("provider-log-mismatch")) parts.push("查询条件中的提供程序不写往所查通道");
 	if (data.countsTruncated) parts.push(`重复来源过多，计数表仅列前 ${COUNTS_MAX} 组`);
-	parts.push(`counts=来源/ID 折叠计数表（n=出现次数，last=最近一次）；msg=简述（截 ${MSG_MAX} 字符），原文用 scope=detail 按 recordId 取`);
-	return { data, notice: parts.join("。") + "。" };
+	parts.push(
+		`counts=来源/ID 折叠计数表（n=出现次数，last=最近一次）；msg=简述（截 ${MSG_MAX} 字符），原文用 scope=detail 按 recordId 取`,
+	);
+	return { data, notice: `${parts.join("。")}。` };
 }
 
 /* ------------------------------------------------------------------ */
@@ -547,7 +578,9 @@ export const CRASH_IDS = [1000, 1001, 1002, 1026, 33, 35];
 /** service：对 SCM 提供者全表交叉核对（ListProvider 解码 0xC0000000+N，
  *  全部 Error 级；7025 本机表未声明，按设计保留，下推多一个永不命中的 ID 无害）；
  *  明确不收：一次性配置类与 7035/7036/7039/7040/7042/7044 信息级 */
-export const SERVICE_IDS = [7000, 7001, 7002, 7003, 7009, 7011, 7013, 7022, 7023, 7024, 7025, 7026, 7031, 7032, 7034, 7038, 7041, 7043];
+export const SERVICE_IDS = [
+	7000, 7001, 7002, 7003, 7009, 7011, 7013, 7022, 7023, 7024, 7025, 7026, 7031, 7032, 7034, 7038, 7041, 7043,
+];
 
 /** disk：坏块/控制器/分页 7·11·51；超时重试 129·153；Ntfs 损坏/写失败 55·98·50·140；掉盘 157 */
 export const DISK_IDS = [7, 11, 51, 55, 98, 50, 129, 140, 153, 157];
@@ -594,9 +627,13 @@ export function buildDetailCmd(spec: { logName: string; recordId?: number; id?: 
 	if (spec.recordId !== undefined) {
 		// XPath 元素名是 EventRecordID（PS 属性叫 RecordId）；模板写死，仅插入整数
 		// 校验后的 recordId —— 与 FilterHashtable 插值同等级的安全模型
-		lines.push(`$rec = Get-WinEvent -LogName ${pwshSingleQuote(spec.logName)} -FilterXPath '*[System[(EventRecordID=${spec.recordId})]]' -MaxEvents 1`);
+		lines.push(
+			`$rec = Get-WinEvent -LogName ${pwshSingleQuote(spec.logName)} -FilterXPath '*[System[(EventRecordID=${spec.recordId})]]' -MaxEvents 1`,
+		);
 	} else {
-		lines.push(`$rec = Get-WinEvent -FilterHashtable @{ LogName = ${pwshSingleQuote(spec.logName)}; Id = ${spec.id} } -MaxEvents 1`);
+		lines.push(
+			`$rec = Get-WinEvent -FilterHashtable @{ LogName = ${pwshSingleQuote(spec.logName)}; Id = ${spec.id} } -MaxEvents 1`,
+		);
 	}
 	lines.push("$unreadable = 0");
 	lines.push("$structural = @()");
@@ -609,10 +646,16 @@ export function buildDetailCmd(spec: { logName: string; recordId?: number; id?: 
 	lines.push("if ($rec) {");
 	lines.push("  $m = [string]$rec.Message");
 	lines.push(`  $cut = $false`);
-	lines.push(`  if ($m.Length -gt ${MSG_FULL_MAX}) { $m = $m.Substring(0,${MSG_FULL_MAX}) + '…(已截断)'; $cut = $true }`);
-	lines.push("  ConvertTo-Json @{ found = $true; admin = $admin; cut = $cut; structural = @(); ev = @{ logName = $rec.LogName; recordId = $rec.RecordId; time = $rec.TimeCreated.ToString('yyyy-MM-dd HH:mm:ss'); level = $rec.Level; provider = $rec.ProviderName; id = $rec.Id; machine = $rec.MachineName; msg = $m } } -Depth 3");
+	lines.push(
+		`  if ($m.Length -gt ${MSG_FULL_MAX}) { $m = $m.Substring(0,${MSG_FULL_MAX}) + '…(已截断)'; $cut = $true }`,
+	);
+	lines.push(
+		"  ConvertTo-Json @{ found = $true; admin = $admin; cut = $cut; structural = @(); ev = @{ logName = $rec.LogName; recordId = $rec.RecordId; time = $rec.TimeCreated.ToString('yyyy-MM-dd HH:mm:ss'); level = $rec.Level; provider = $rec.ProviderName; id = $rec.Id; machine = $rec.MachineName; msg = $m } } -Depth 3",
+	);
 	lines.push("} else {");
-	lines.push("  ConvertTo-Json @{ found = $false; admin = $admin; structural = @($structural | Select-Object -First 3); poison = $unreadable } -Depth 3");
+	lines.push(
+		"  ConvertTo-Json @{ found = $false; admin = $admin; structural = @($structural | Select-Object -First 3); poison = $unreadable } -Depth 3",
+	);
 	lines.push("}");
 	return lines.join("\n");
 }
@@ -624,7 +667,11 @@ export interface DetailCoreResult {
 	admin?: boolean;
 }
 
-export async function queryDetail(raw: { logName?: unknown; recordId?: unknown; id?: unknown }): Promise<DetailCoreResult> {
+export async function queryDetail(raw: {
+	logName?: unknown;
+	recordId?: unknown;
+	id?: unknown;
+}): Promise<DetailCoreResult> {
 	let logName: string;
 	let recordId: number | undefined;
 	let id: number | undefined;
@@ -658,7 +705,9 @@ export async function queryDetail(raw: { logName?: unknown; recordId?: unknown; 
 	if (r && typeof r.error === "string") return { error: r.error };
 	if (!r || typeof r.found !== "boolean") return { error: "事件详情返回结构异常" };
 
-	const structural: string[] = Array.isArray(r.structural) ? r.structural.filter((s: unknown) => typeof s === "string" && s.trim()) : [];
+	const structural: string[] = Array.isArray(r.structural)
+		? r.structural.filter((s: unknown) => typeof s === "string" && s.trim())
+		: [];
 	if (r.found === true) {
 		const ev = (r as any).ev ?? {};
 		const lv = Number(ev.level ?? 0);
@@ -737,10 +786,20 @@ export async function runScope(params: ScopeParams): Promise<Record<string, unkn
 	}
 }
 
-async function routeScope(scope: string, params: ScopeParams, hours: unknown, top: unknown): Promise<Record<string, unknown>> {
+async function routeScope(
+	scope: string,
+	params: ScopeParams,
+	hours: unknown,
+	top: unknown,
+): Promise<Record<string, unknown>> {
 	switch (scope) {
 		case "recent": {
-			const r = await queryEvents({ logNames: ["System", "Application"], level: params.level ?? "warn", hours, top });
+			const r = await queryEvents({
+				logNames: ["System", "Application"],
+				level: params.level ?? "warn",
+				hours,
+				top,
+			});
 			return payload(r);
 		}
 		case "boot": {
@@ -793,7 +852,10 @@ async function routeScope(scope: string, params: ScopeParams, hours: unknown, to
 		}
 		case "disk": {
 			const r = await queryEvents({ logNames: ["System"], ids: DISK_IDS, hours, top });
-			return payload(r, "disk：白名单=坏块/控制器/分页 7·11·51 / 超时重试 129·153 / Ntfs 损坏/写失败 55·98·50·140 / 掉盘 157。");
+			return payload(
+				r,
+				"disk：白名单=坏块/控制器/分页 7·11·51 / 超时重试 129·153 / Ntfs 损坏/写失败 55·98·50·140 / 掉盘 157。",
+			);
 		}
 		case "security": {
 			const type = params.type ?? "all";
@@ -808,11 +870,15 @@ async function routeScope(scope: string, params: ScopeParams, hours: unknown, to
 					admin: false,
 					degraded: true,
 					type,
-					notice: "security 需要管理员权限：当前以非管理员运行，Security 日志不可读，未执行查询。以管理员身份重启 pi 后可用（type=all / logonFail / lockout）。",
+					notice:
+						"security 需要管理员权限：当前以非管理员运行，Security 日志不可读，未执行查询。以管理员身份重启 pi 后可用（type=all / logonFail / lockout）。",
 				};
 			}
 			const r = await queryEvents({ logNames: ["Security"], ids: SECURITY_IDS[type], hours, top });
-			const out = payload(r, `security(type=${type})：白名单=成功登录 4624 / 登录失败 4625 / 账户锁定 4740（域环境 Kerberos 失败不在覆盖范围）。`);
+			const out = payload(
+				r,
+				`security(type=${type})：白名单=成功登录 4624 / 登录失败 4625 / 账户锁定 4740（域环境 Kerberos 失败不在覆盖范围）。`,
+			);
 			if (!out.error) {
 				out.type = type;
 				out.admin = true;
@@ -842,7 +908,7 @@ async function routeScope(scope: string, params: ScopeParams, hours: unknown, to
 		case "detail": {
 			const r = await queryDetail({ logName: params.logName, recordId: params.recordId, id: params.id });
 			if (r.error) return { error: r.error };
-			if (r.data && r.data.found) {
+			if (r.data?.found) {
 				const { found, ...ev } = r.data as { found: boolean } & Record<string, unknown>;
 				return { ...ev, found, notice: r.notice };
 			}

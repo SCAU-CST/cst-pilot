@@ -9,23 +9,18 @@
  *     · 管理员 + WizTree 便携版可用 -> 直读 NTFS MFT（秒级全盘）
  *     · 否则 -> Node 逐文件 stat 累加（较慢；50 万条目熔断，结果为下界）
  */
-import { Type } from "typebox";
-import { StringEnum } from "@earendil-works/pi-ai";
-import {
-	statfsSync,
-	promises as fsp,
-	existsSync,
-	mkdirSync,
-	createReadStream,
-	rmSync,
-} from "node:fs";
+
 import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { createReadStream, existsSync, promises as fsp, mkdirSync, rmSync, statfsSync } from "node:fs";
 import * as readline from "node:readline";
+import { promisify } from "node:util";
+import { StringEnum } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 // 跨扩展共享的 WizTree 账本：usage 扫描顺手喂账，ls 直接吃现成
 import { addDirLine, addFileLine, driveKey } from "./wz-index";
 
 const execFileP = promisify(execFile);
+
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -126,16 +121,6 @@ function diskSpace(driveFilter: string) {
 	return out;
 }
 
-/** 当前进程是否有管理员权限（net session 仅管理员可成功；异步） */
-async function isAdmin(): Promise<boolean> {
-	try {
-		const r = await execFileP("net", ["session"], { timeout: 5000, windowsHide: true, encoding: "buffer" });
-		return true;
-	} catch {
-		return false;
-	}
-}
-
 /* ------------------------------------------------------------------ */
 /* scope=usage · 快速路径：WizTree 直读 MFT（实测普通权限也可用）        */
 /* ------------------------------------------------------------------ */
@@ -178,11 +163,11 @@ function usageViaWizTree(rootPath: string, topN: number): Promise<any> {
 		const csvPath = join(WIZTREE_TMP, "export.csv");
 		try {
 			// /exportfiles=1：文件行也导出 —— 大文件/扩展名/僵尸三本账的原料
-			await execFileP(
-				WIZTREE,
-				[rootPath, "/admin=0", `/export=${csvPath}`, "/exportfolders=1", "/exportfiles=1"],
-				{ timeout: 180000, windowsHide: true, maxBuffer: 1024 * 1024 },
-			);
+			await execFileP(WIZTREE, [rootPath, "/admin=0", `/export=${csvPath}`, "/exportfolders=1", "/exportfiles=1"], {
+				timeout: 180000,
+				windowsHide: true,
+				maxBuffer: 1024 * 1024,
+			});
 			if (!existsSync(csvPath)) {
 				return { error: "WizTree 未生成导出文件" };
 			}
@@ -230,7 +215,10 @@ function usageViaWizTree(rootPath: string, topN: number): Promise<any> {
 				const dot = path.lastIndexOf(".");
 				const ext =
 					dot > path.lastIndexOf("\\") && dot < path.length - 1
-						? path.slice(dot + 1).toLowerCase().slice(0, 12)
+						? path
+								.slice(dot + 1)
+								.toLowerCase()
+								.slice(0, 12)
 						: "(无扩展名)";
 				const agg = extMap.get(ext) ?? { bytes: 0, files: 0 };
 				agg.bytes += bytes;
@@ -297,7 +285,7 @@ async function usageViaWalk(rootPath: string, topN: number): Promise<any> {
 	let truncated = false;
 
 	async function walk(dir: string): Promise<number> {
-		let entries;
+		let entries: import("node:fs").Dirent[] | undefined;
 		try {
 			entries = await fsp.readdir(dir, { withFileTypes: true });
 		} catch (e: any) {
@@ -387,12 +375,9 @@ export default function (pi: any) {
 			),
 		}),
 
-		async execute(
-			_toolCallId: string,
-			params: { scope: string; drive?: string; path?: string; top?: number },
-		) {
+		async execute(_toolCallId: string, params: { scope: string; drive?: string; path?: string; top?: number }) {
 			// 参数白名单二次校验：模型只能传盘符，其余一切拒绝
-			let drive = (params.drive ?? "").toUpperCase().replace(/[^A-Z]/g, "");
+			const drive = (params.drive ?? "").toUpperCase().replace(/[^A-Z]/g, "");
 			if (params.drive && !/^[A-Z]$/.test(drive)) {
 				return {
 					content: [{ type: "text", text: `非法盘符参数: ${JSON.stringify(params.drive)}（只接受单个字母 A-Z）` }],
@@ -417,7 +402,9 @@ export default function (pi: any) {
 							drive: v.DeviceID,
 							label: v.VolumeName,
 							fs: v.FileSystem,
-							driveType: { 2: "Removable", 3: "Fixed", 4: "Network", 5: "Optical" }[v.DriveType as number] ?? v.DriveType,
+							driveType:
+								{ 2: "Removable", 3: "Fixed", 4: "Network", 5: "Optical" }[v.DriveType as number] ??
+								v.DriveType,
 							totalGB: fmtGB(v.Size),
 							freeGB: fmtGB(v.FreeSpace),
 						}))
@@ -451,7 +438,7 @@ export default function (pi: any) {
 							result.usage = fast;
 						} else {
 							result.usage = await usageViaWalk(rootPath, topN);
-							if (fast && fast.error) result.usage.degradedFrom = `wiztree: ${fast.error}`;
+							if (fast?.error) result.usage.degradedFrom = `wiztree: ${fast.error}`;
 						}
 					} else {
 						result.usage = await usageViaWalk(rootPath, topN);

@@ -19,8 +19,9 @@
  *   query    自定义结构化查询（ids 下推 + level + provider 正则 / msg 子串后置过滤）
  *   detail   单条详情与原文（recordId 直取 EventRecordID，或 id 取最近一条）
  */
-import { Type } from "typebox";
+
 import { StringEnum } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import { runScope, SCOPES } from "./eventlog-core";
 
 export default function (pi: any) {
@@ -28,11 +29,11 @@ export default function (pi: any) {
 		name: "eventlog",
 		label: "Event Log",
 		description:
-			"只读事件日志工具，按 scope 选择子功能（不传默认 recent）：recent=近 N 小时错误/警告汇总；boot=开关机/意外关机/蓝屏历史（含 WHEA 硬件错误）；crash=应用崩溃与启动失败（含故障模块，可按程序名过滤）；service=服务启动失败/挂起/崩溃（可按服务名过滤）；disk=磁盘/文件系统报错与掉盘；security=登录审计（需管理员，非管理员自动降级提示）；query=按事件 ID/级别/提供程序/消息子串自定义查询；detail=按 recordId（或 id 取最近一条）读取单条完整原文。",
+			"只读事件日志工具，读取机器沉淀的历史故障痕迹，按 scope 选择子功能（不传默认 recent）：recent=近 N 小时错误/警告汇总（开场首选）；boot=开关机/意外关机/蓝屏历史（含 WHEA 硬件错误，ID 白名单内置）；crash=应用崩溃与启动失败（含故障模块名，可按程序名过滤）；service=服务启动失败/挂起/崩溃（可按服务名过滤）；disk=磁盘/文件系统报错与掉盘；security=登录审计 4624/4625/4740（需管理员，非管理员自动降级）；query=按事件 ID/级别/提供程序正则/消息子串自定义查询；detail=按 recordId（或 id 取最近一条）读单条完整原文。与 sys 搭配：sys 看实时负载，eventlog 看历史痕迹。",
 		promptSnippet:
 			"Read Windows event logs (read-only): recent errors/warnings, boot/unexpected-shutdown/BSOD history, app crashes, service failures, disk/file-system errors, logon audit, custom queries, and single-event full text",
 		promptGuidelines: [
-			"Use eventlog scope=recent when the user reports odd behavior, crashes, or sluggishness and you need recent error/warning context from the event logs.",
+			"Use eventlog scope=recent when the user reports odd behavior, crashes, or sluggishness and you need recent error/warning context from the event logs (pairs with sys: sys shows current load, eventlog shows history).",
 			"Use scope=boot for 'did it power off / blue screen' questions (unexpected shutdown IDs, BugCheck, WHEA hardware errors); scope=crash for app crashes; scope=service for services failing to start or dying; scope=disk for disk/file-system errors.",
 			"Use scope=query with ids/provider/msg to dig for specific events beyond the built-in whitelists; use scope=detail with a recordId (or id) to read one event's full message.",
 			"scope=security (logon audit) needs administrator; it degrades with an explicit notice when running non-elevated.",
@@ -45,33 +46,29 @@ export default function (pi: any) {
 			top: Type.Optional(
 				Type.Number({ description: "可选，事件列表条数上限，默认 100（硬上限 100）。除 detail 外各 scope 通用。" }),
 			),
-			level: Type.Optional(
-				StringEnum(["warn", "error"] as const),
-			),
-			kind: Type.Optional(
-				StringEnum(["all", "unexpected", "bluescreen"] as const),
-			),
-			type: Type.Optional(
-				StringEnum(["all", "logonFail", "lockout"] as const),
-			),
+			level: Type.Optional(StringEnum(["warn", "error"] as const)),
+			kind: Type.Optional(StringEnum(["all", "unexpected", "bluescreen"] as const)),
+			type: Type.Optional(StringEnum(["all", "logonFail", "lockout"] as const)),
 			app: Type.Optional(
-				Type.String({ description: 'scope=crash 可选，程序名/模块名模糊过滤（对消息做不区分大小写的子串匹配，如 "chrome"）。' }),
+				Type.String({
+					description: 'scope=crash 可选，程序名/模块名模糊过滤（对消息做不区分大小写的子串匹配，如 "chrome"）。',
+				}),
 			),
-			name: Type.Optional(
-				Type.String({ description: "scope=service 可选，服务名模糊过滤（消息子串匹配）。" }),
-			),
+			name: Type.Optional(Type.String({ description: "scope=service 可选，服务名模糊过滤（消息子串匹配）。" })),
 			provider: Type.Optional(
-				Type.String({ description: "scope=query 可选，提供程序正则（不区分大小写，1 秒超时保护，作用于 ProviderName 后置过滤）。" }),
+				Type.String({
+					description:
+						"scope=query 可选，提供程序正则（不区分大小写，1 秒超时保护，作用于 ProviderName 后置过滤）。",
+				}),
 			),
-			msg: Type.Optional(
-				Type.String({ description: "scope=query 可选，消息子串过滤（不区分大小写）。" }),
-			),
+			msg: Type.Optional(Type.String({ description: "scope=query 可选，消息子串过滤（不区分大小写）。" })),
 			ids: Type.Optional(
-				Type.Array(Type.Number(), { description: "scope=query 可选，事件 ID 数组（1-65535 整数，下推过滤）。" }),
+				Type.Array(Type.Number(), { description: "scope=query 可选，事件 ID 数组（0-65535 整数，下推过滤）。" }),
 			),
 			logName: Type.Optional(
 				Type.String({
-					description: 'scope=query 可选，单通道名（默认 System+Application，如 "System"、"Microsoft-Windows-PowerShell/Operational"）；scope=detail 必填。',
+					description:
+						'scope=query 可选，单通道名（默认 System+Application，如 "System"、"Microsoft-Windows-PowerShell/Operational"）；scope=detail 必填。',
 				}),
 			),
 			recordId: Type.Optional(

@@ -13,11 +13,12 @@
  * - 禁用状态：读 StartupApproved 键（任务管理器"启动应用"开关的落点），
  *   首字节奇数 = 已禁用；已禁用项不会开机拉起，如实标注避免误报
  */
-import { Type } from "typebox";
+
 import { execFile } from "node:child_process";
-import { promisify } from "node:util";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
+import { Type } from "typebox";
 
 const execFileP = promisify(execFile);
 
@@ -165,7 +166,8 @@ export default function (pi: any) {
 		label: "Startup Audit",
 		description:
 			"盘点开机自启项（只读，一次调用取全）：注册表 Run/RunOnce 自启项（HKLM/HKCU/Wow6432Node，含任务管理器禁用状态）、启动文件夹（当前用户+所有用户）、自启服务列表（StartMode=Auto，含延迟自启，运行中的排前面）。用于回答'开机都拉起了什么''为什么开机慢''开机后什么在后台跑'。",
-		promptSnippet: "Audit boot autostart entries: registry Run keys, startup folders, auto-start services (read-only)",
+		promptSnippet:
+			"Audit boot autostart entries: registry Run keys, startup folders, auto-start services (read-only)",
 		promptGuidelines: [
 			"Use startup when the user asks what launches at boot, what runs in the background after startup, or why booting is slow.",
 			"Combine with sys scope=proc when diagnosing slowness AFTER boot: startup explains what gets launched, sys shows what is actually consuming resources now.",

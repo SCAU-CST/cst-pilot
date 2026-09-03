@@ -11,13 +11,13 @@
  * 账本质量约定：只有 WizTree 全量 MFT 导出的数据才入账（node-walk 降级
  * 路径的数据是熔断下界，只返回不存储，避免污染账本）。
  */
-import { existsSync, mkdirSync, createReadStream, rmSync } from "node:fs";
+
 import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { createReadStream, existsSync, mkdirSync, rmSync } from "node:fs";
+import { dirname, join, resolve, sep } from "node:path";
 import * as readline from "node:readline";
-import { join, resolve, sep } from "node:path";
-import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 
 const execFileP = promisify(execFile);
 
@@ -38,10 +38,14 @@ interface WzStore {
 
 /** 进程级单例账本（globalThis 免疫扩展加载器的模块实例隔离） */
 const g = globalThis as any;
-const store: WzStore = (g.__wzIndexStore ??= { dirs: new Map(), files: new Map() });
+if (!g.__wzIndexStore) g.__wzIndexStore = { dirs: new Map(), files: new Map() };
+const store: WzStore = g.__wzIndexStore;
 
 /** 规范化路径：大写、无尾分隔符 */
-export const normPath = (p: string) => resolve(p).replace(/[\\/]+$/, "").toUpperCase();
+export const normPath = (p: string) =>
+	resolve(p)
+		.replace(/[\\/]+$/, "")
+		.toUpperCase();
 
 /** 提取盘符键（如 "C:"）；UNC 路径返回 null（不做索引） */
 export function driveKey(p: string): string | null {
