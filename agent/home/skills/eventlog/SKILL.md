@@ -15,7 +15,7 @@ description: eventlog 工具的参数与返回字段说明。八个 scope 的查
 
 ## 查询类 scope 的公共返回字段
 
-1. `logs`（实际查询通道）/ `hours` / `top` / `total`（时间窗内命中总数，含未显示的更早记录）/ `truncated`（total > top 时 true）/ `unreadable`（消息资源损坏被跳过的记录数）/ `noMatch`（条件级零命中提示码）/ `admin`（查询进程是否管理员）/ `events`（最新 top 条，时间倒序）/ `counts`（来源/ID 折叠计数表）/ `notice`
+1. `logs`（实际查询通道）/ `hours` / `top` / `total`（时间窗内命中总数，含未显示的更早记录）/ `truncated`（total > top 时 true）/ `firstTime` / `lastTime`（事件样本的最早 / 最新时间，空列表时无此字段）/ `unreadable`（消息资源损坏被跳过的记录数）/ `noMatch`（条件级零命中提示码）/ `admin`（查询进程是否管理员）/ `events`（最新 top 条，时间倒序）/ `counts`（来源/ID 折叠计数表）/ `notice`
 2. `events` 每条：`logName` / `time`（本地时区）/ `recordId`（detail 直取用）/ `level` 数字与 `levelName`（英文固定映射）/ `provider` / `id` / `msg`（≤200 字符简述，无渲染模板的系统事件为 null）
 3. `counts` 每项：`key`（provider/id）/ `n`（出现次数）/ `last`（最近一次时间），n 降序最多 100 组，超出标记 `countsTruncated=true`；折叠完备（`sum(counts.n) === total`）
 4. `noMatch` 固定码：`provider-not-found` = 提供程序名在本机不存在，`provider-log-mismatch` = 提供程序不写往所查通道

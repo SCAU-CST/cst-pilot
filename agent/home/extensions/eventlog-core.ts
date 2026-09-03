@@ -436,7 +436,8 @@ export interface CoreResultData {
 	noMatch: string[]; // 条件级零命中提示码：provider-not-found / provider-log-mismatch
 	admin: boolean; // 查询进程是否管理员（security 降级判定用）
 	events: CoreEvent[]; // 最新 top 条，时间倒序
-	counts: CountRow[]; // 来源/ID 折叠计数表，n 降序
+	firstTime?: string; // 事件样本最早时间（events 末条），空列表时无此字段；日志被刷屏滚没时样本跨度会远小于 hours 窗口
+	lastTime?: string; // 事件样本最新时间（events 首条）	counts: CountRow[]; // 来源/ID 折叠计数表，n 降序
 	countsTruncated: boolean;
 }
 
@@ -556,6 +557,11 @@ export async function queryEvents(
 	if (data.noMatch.includes("provider-not-found")) parts.push("查询条件中的提供程序在本机不存在");
 	if (data.noMatch.includes("provider-log-mismatch")) parts.push("查询条件中的提供程序不写往所查通道");
 	if (data.countsTruncated) parts.push(`重复来源过多，计数表仅列前 ${COUNTS_MAX} 组`);
+	if (events.length > 0) {
+		data.firstTime = String(events[events.length - 1].time ?? "");
+		data.lastTime = String(events[0].time ?? "");
+	}
+	if (events.length > 0) parts.push(`事件样本覆盖 ${data.firstTime} ~ ${data.lastTime}`);
 	parts.push(
 		`counts=来源/ID 折叠计数表（n=出现次数，last=最近一次）；msg=简述（截 ${MSG_MAX} 字符），原文用 scope=detail 按 recordId 取`,
 	);

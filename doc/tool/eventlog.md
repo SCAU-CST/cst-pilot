@@ -94,6 +94,8 @@ Function schema（每次请求的 tools 数组中）：
   "unreadable": 0,                     // 消息资源损坏被跳过的记录数（毒事件）
   "noMatch": [],                       // 条件级零命中提示码（见实现）
   "admin": false,                      // 查询进程是否管理员
+  "firstTime": "2026-09-03 08:10:46", // 事件样本最早时间（events 末条）；空列表时无此字段
+  "lastTime": "2026-09-03 08:35:12",  // 事件样本最新时间（events 首条）
   "events": [                          // 最新 top 条，时间倒序
     {
       "logName": "System",
@@ -239,5 +241,5 @@ recordId 模式：`Get-WinEvent -LogName X -FilterXPath '*[System[(EventRecordID
   需渲染全部下推命中记录的消息，量级由 ID 白名单兜住；query 的过滤词过宽
   时耗时随命中量增长（超时 30s 兜底）
 - 无消息文本的事件 msg 为 null（正常，部分系统事件无渲染模板）
-- 刷屏机器的速率陷阱：单组占绝对主导（counts.n ≈ total）且 events 时间戳挤在极短时间内时，日志正被高速灌屏，时间窗内更早的记录已被滚动清除——total 不能当整个时间窗的均匀累计去算平均速率（2026-09-03 真机实测：WHEA-Logger/17 约 3000 条/分钟，System 30d 窗口 12,272 条全在 4 分钟内；模型把 total 除以 30 天得出千分之一量级的假速率）
+- 刷屏机器的速率陷阱：单组占绝对主导（counts.n ≈ total）且 firstTime/lastTime 样本跨度远小于 hours 窗口时，日志正被高速灌屏，时间窗内更早的记录已被滚动清除——total 不能当整个时间窗的均匀累计去算平均速率（2026-09-03 真机实测：WHEA-Logger/17 约 3000 条/分钟，System 30d 窗口 12,272 条全在 4 分钟内；span 字段落地后 notice 自带样本跨度句，模型可直接判读）
 - 同因：被灌爆的日志上 boot 的启停标记（6005/6006）恒为 0——不是系统不记录，是旧记录被滚出窗口。span 字段（窗口内实际覆盖时间）落地前靠 events 时间戳分布判读
