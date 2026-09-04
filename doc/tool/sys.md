@@ -407,7 +407,7 @@ pid→进程名映射：两路计数器实例合并后对去重 pid 逐个 `Get-
 
 | 路 | 数据源 | 内容 |
 |---|---|---|
-| 1 | LHM 0.9.6 用户态（`lhm\` DLL 随仓库分发，Add-Type 加载） | GPU 温度/风扇/电压（NVAPI）等 |
+| 1 | LHM 0.9.6 用户态（`lhm\` DLL 随发行版分发，Add-Type 加载） | GPU 温度/风扇/电压（NVAPI）等 |
 | 2 | `\Thermal Zone Information(*)\*` 性能计数器 | 热区温度（开尔文→°C）+ 被动降热百分比 |
 | 3 | `\Processor Information(*)\% of Maximum Frequency` | 各核频率占最大百分比，min/avg |
 
@@ -441,7 +441,7 @@ pid→进程名映射：两路计数器实例合并后对去重 pid 逐个 `Get-
 | GPU 计数器一次 Get-Counter 全取 | 按需过滤实例名 | CounterSamples 一次拿全（452 个），Node 侧过滤更灵活 |
 | nvidia-smi 检测附带 | 打包 / 硬依赖 | 驱动组件：有 N 卡的机器必有，无 N 卡装了也没用；不破坏零宿主依赖 |
 | 传感器读 LHM 用户态 + 系统计数器 | WMI `MSAcpi_ThermalZoneTemperature` | MSAcpi 要管理员且数据同热区计数器；计数器免管理员，一次 Get-Counter 全取 |
-| LHM 随仓库打包 `lhm\` | NuGet 还原 / 宿主安装 / PawnIO | 零宿主安装约束；DLL 是纯文件不是驱动安装，不违背约束；目标机可能无网 |
+| LHM 随发行版打包 `lhm\` | NuGet 还原 / 宿主安装 / PawnIO | 零宿主安装约束；DLL 是纯文件不是驱动安装，不违背约束；目标机可能无网 |
 | 只开 Cpu/Gpu/Motherboard | 全开 | 关掉的硬件类型少加载 DiskInfoToolkit/RAMSPDToolkit 依赖路径 |
 | 降频信号替代 CPU 核心温度 | 装 PawnIO / 带 WinRing0 的旧 LHM | 前者违背零安装，后者被微软拦（CVE-2020-14979）；降频是过热的直接后果，诊断上更接近结论 |
 | 热区合理性过滤（-50~150°C） | 原样上报 | ACPI 缺传感器时返回伪值，污染上下文 |

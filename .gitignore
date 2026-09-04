@@ -6,6 +6,7 @@ agent/home/npm/
 agent/home/fff/
 pwsh/
 wiztree/
+lhm/*.dll
 
 # ---- 运行时状态与密钥 ----
 agent/home/auth.json

@@ -35,7 +35,7 @@
 cst-pilot/
 ├── pi.cmd                          ✅ 唯一入口，启动隔离的 pi Agent
 ├── doc/                            ✅ 项目文档（PRD / 设计 / 工具文档）
-├── lhm/                            ✅ LibreHardwareMonitorLib DLL 包（约 2.7MB，见 lhm/README.md）
+├── lhm/                            ❌ DLL 不入库（发行版打包时从本地拷入，见 lhm/README.md）
 └── agent/
     ├── node_modules/               ❌ pi 及依赖（npm install 重建，见下）
     └── home/                       ✅（部分）隔离的 pi 配置：extensions（自定义工具）、skills、settings.json
