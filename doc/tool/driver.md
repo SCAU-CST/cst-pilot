@@ -50,8 +50,10 @@ find 三条件至少传一个，AND 组合；不传 scope 默认 `problem`。
 - problem 只取 `Status="Error" OR Status="Unknown"`——不用
   `ConfigManagerErrorCode != 0` 过滤，后者会漏 errorCode=0 的幽灵异常设备
   （指纹识别器有先例）
-- find 条件 AND 组合；`id` 对 deviceId 与 hardwareIds 双通道匹配
-  （忽略大小写）——HardwareID 是字符串数组，WQL LIKE 不支持，无法下推
+- find 条件 AND 组合；`id` 先下推 `DeviceID LIKE`（LIKE 通配符 `%` `_` `[`
+  `\` 全部转义为字面量，反斜杠不转义会静默失配返回 0），再在 Node 侧对
+  deviceId 与 hardwareIds 双通道后置匹配（忽略大小写）——HardwareID 是
+  字符串数组，无法下推
 - 错误码不做翻译，人话解读与处置建议由模型联网查官方文档
 
 ### core：四类硬件现状
@@ -100,8 +102,10 @@ find 三条件至少传一个，AND 组合；不传 scope 默认 `problem`。
   单引号包裹）。内层单引号会把外层提前闭合、过滤条件被静默拆散——
   SilentlyContinue 下不报错，只表现为命中量异常（首版 class=Net
   "命中 1" 实为语义已错，全量应为 22）
-- `HardwareID` 是字符串数组，WQL LIKE 不支持 → find 的 id 不下推，
-  Node 侧后置双通道匹配
+- find 的 id 下推到 `DeviceID LIKE`：LIKE 模式内 `%` `_` `[` `\` 全部
+  转义为字符组（`%`→`[%]` 等；`\` 是 WQL LIKE 转义前缀，不转义则
+  `PCI\VEN_8086` 静默失配返回 0），`hardwareIds` 是字符串数组无法下推，
+  由 Node 侧后置双通道匹配
 - `USB\` 前缀 LIKE 天然连带 `USBSTOR\`（U 盘存储节点）——外设排查
   正需要它，不视为白名单泄漏
 - `PhysicalAdapter` 在部分机器无区分度（本机 VMware / Wintun 虚拟网卡

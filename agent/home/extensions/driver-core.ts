@@ -91,9 +91,13 @@ export async function runPwsh(command: string, timeoutMs = 30000, pwshPath: stri
 /* WQL 转义与白名单校验（注入防护：模型输入只进结构化字段）               */
 /* ------------------------------------------------------------------ */
 
-/** WQL LIKE 通配符转义：% _ [ → 字面量（在双引号字符串字面量内使用） */
+/** WQL LIKE 通配符转义：% _ [ \ → 字面量（单次扫描，替换互不嵌套污染）。
+ *  \ 必须转义且只能翻倍成 \\（两个）：WQL LIKE 中反斜杠是转义前缀，
+ *  PCI\VEN_8086 这类带 \ 的硬件 ID 不转义会静默失配返回 0
+ *  （2026-09-04 真机测试踩坑；不能用字符组 [\\]，组内 \\] 会被当
+ *  组内转义闭合歧义，pwsh 实测同样失配） */
 export function escapeLike(s: string): string {
-	return s.replace(/\[/g, "[[]").replace(/%/g, "[%]").replace(/_/g, "[_]");
+	return s.replace(/[[%_\\]/g, (ch) => (ch === "\\" ? "\\\\" : ch === "[" ? "[[]" : `[${ch}]`));
 }
 
 /** WQL 双引号字符串字面量转义：" → "" */
