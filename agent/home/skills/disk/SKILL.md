@@ -10,7 +10,7 @@ description: disk 工具的参数与返回字段说明。覆盖 scope 枚举含�
 ## 参数
 
 1. `scope`（必填）：`space` / `info` / `health` / `usage` / `all`
-2. `drive`（可选）：限定盘符，只接受单个字母（如 `C`），传 `C:` 或完整路径会被拒绝。仅对 `space` / `info` / `health` 生效，省略则返回全部卷
+2. `drive`（可选）：限定盘符，只接受单个字母（如 `C`），传 `C:` 或完整路径会被拒绝。对 `space` / `info` / `health` 生效，省略则返回全部卷。对 `info` 是双过滤：卷按盘符滤，物理盘按盘符→分区→物理盘关联只留所在盘（关联查询失败时退回全量并在 infoNotice 如实声明）
 3. `path`（可选）：`scope=usage` 时必填，要分析的目录或盘符，整个目录树会被统计
 4. `top`（可选）：`scope=usage` 时生效，排行条数，默认 20，上限 100
 
@@ -19,7 +19,7 @@ description: disk 工具的参数与返回字段说明。覆盖 scope 枚举含�
 1. `space`：Node `statfsSync` 统计各卷，瞬间返回。返回字段：`drive` / `totalGB` / `freeGB` / `usedPct`
 2. `info`：pwsh 查询 `Get-PhysicalDisk` 与 `Win32_LogicalDisk`，约 4 秒。`physicalDisks` 含型号 / 序列号 / SSD 或 HDD / NVMe 或 SATA 或 USB / 健康状态；`volumes` 含盘符 / 卷标 / 文件系统 / 盘类型（数字码已译为 Fixed / Removable / Network / Optical）/ 总量 / 剩余
 3. `health`：pwsh 查询 `Get-StorageReliabilityCounter`，返回磨损度（Wear）/ 温度 / 通电小时 / 读写错误计数。需要管理员权限；权限不足时返回 `smart: null` 与 `smartNotice` 说明，其余 scope 不受影响
-4. `usage`：优先由仓库自带 WizTree 直读 NTFS 主文件表（MFT）导出后流式解析，全盘秒级，普通权限可用；WizTree 不可用或失败时自动降级为逐文件递归统计（慢，大目录可达分钟级，结果为下界）。降级后结果 `method` 为 `node-walk` 并附 `degradedFrom`；快速路径 `method` 为 `wiztree-mft`
+4. `usage`：优先由仓库自带 WizTree 扫描后流式解析（NTFS 卷直读主文件表 MFT 全盘秒级；FAT32/exFAT 卷无 MFT，走目录遍历，结果同样为全量但非 MFT 精确账）；WizTree 不可用或失败时自动降级为逐文件递归统计（慢，大目录可达分钟级，结果为下界）。降级后结果 `method` 为 `node-walk` 并附 `degradedFrom`；快速路径 NTFS 卷 `method` 为 `wiztree-mft`，非 NTFS 卷为 `wiztree-walk` 并在 notice 说明
 5. `all`：一次执行 `space` + `info` + `health`，不含 `usage`
 
 ## usage 返回字段定义

@@ -126,7 +126,9 @@ Function schema（每次请求的 tools 数组中）：
   意外重启 41/6008、蓝屏 1001、重启原因 1074/19/7045）∪ WHEA-Logger 硬件错误；
   kind=unexpected 只查 41/6008；kind=bluescreen 查 1001 + WHEA-Logger
 - **crash**：Application 通道 1000（应用崩溃）/1001（WER）/1002（无响应）/
-  1026（.NET Runtime）/33·35（SideBySide 并行配置）；`app` 按消息子串过滤
+  1026（.NET Runtime）——只认 Error 级（部分服务以 Information 级复用 1000 记普通
+  日志，已硬滤，notice 有说明）；33·35（SideBySide，不限级别）；`app` 按消息子串过滤。
+  命中但 provider 非典型崩溃来源的事件标 `atypical: true`（ID 可能被第三方复用），请人工判读
 - **service**：System 通道 SCM 白名单 18 个 ID（全 Error 级，见下"终验"）；
   `name` 按消息子串过滤
 - **disk**：System 通道 7/11/51（坏块/控制器/分页）、129/153（超时重试）、

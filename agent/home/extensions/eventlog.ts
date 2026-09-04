@@ -29,7 +29,7 @@ export default function (pi: any) {
 		name: "eventlog",
 		label: "Event Log",
 		description:
-			"只读事件日志工具，读取机器沉淀的历史故障痕迹，按 scope 选择子功能（不传默认 recent）：recent=近 N 小时错误/警告汇总（开场首选）；boot=开关机/意外关机/蓝屏历史（含 WHEA 硬件错误，ID 白名单内置）；crash=应用崩溃与启动失败（含故障模块名，可按程序名过滤）；service=服务启动失败/挂起/崩溃（可按服务名过滤）；disk=磁盘/文件系统报错与掉盘；security=登录审计 4624/4625/4740（需管理员，非管理员自动降级）；query=按事件 ID/级别/提供程序正则/消息子串自定义查询；detail=按 recordId（或 id 取最近一条）读单条完整原文。与 sys 搭配：sys 看实时负载，eventlog 看历史痕迹。",
+			"只读事件日志工具，读取机器沉淀的历史故障痕迹，按 scope 选择子功能（不传默认 recent）：recent=近 N 小时错误/警告汇总（开场首选）；boot=开关机/意外关机/蓝屏历史（含 WHEA 硬件错误，ID 白名单内置）；crash=应用崩溃与启动失败（1000/1001/1002/1026 仅 Error 级，可按程序名过滤，非典型来源标 atypical）；service=服务启动失败/挂起/崩溃（可按服务名过滤）；disk=磁盘/文件系统报错与掉盘；security=登录审计 4624/4625/4740（需管理员，非管理员自动降级）；query=按事件 ID/级别/提供程序正则/消息子串自定义查询；detail=按 recordId（或 id 取最近一条）读单条完整原文。与 sys 搭配：sys 看实时负载，eventlog 看历史痕迹。",
 		promptSnippet:
 			"Read Windows event logs (read-only): recent errors/warnings, boot/unexpected-shutdown/BSOD history, app crashes, service failures, disk/file-system errors, logon audit, custom queries, and single-event full text",
 		promptGuidelines: [

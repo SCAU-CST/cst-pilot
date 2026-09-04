@@ -44,3 +44,19 @@ cmd 按 ANSI/GBK 解析批处理文件，中文内容在部分机器上会导致
 
 本工具可能在机主电脑的任意目录启动，cwd 祖先链上可能出现陌生项目的 `.pi\` 资源。
 `defaultProjectTrust=never` 保证这些资源不会被加载，属于隔离设计的一部分而非可选项。
+
+## WizTree 的 MFT 捷径仅 NTFS 有效，method 必须按卷类型标注
+
+WizTree 直读 MFT 只在 NTFS 卷成立；FAT32/exFAT/UNC 上它实际走目录遍历（仍可用，
+结果为全量但非 MFT 精确账）。disk usage 的 `method` 必须按卷文件系统标注：
+NTFS → `wiztree-mft`，否则 → `wiztree-walk`，否则 FAT32 卷上会冒出假的
+`wiztree-mft` 让队员把遍历结果当精确值。修在 `disk.ts` 的 `usageViaWizTree`。
+
+落地时连续踩了三个坑，均已有对策：
+
+1. `fsutil fsinfo volumeinfo` 对 NTFS 系统卷非管理员会拒绝访问（错误 5），
+   可移动卷反而可读——因此探测用 fsutil 快路径 + pwsh CIM 兜底（普通权限可用）。
+2. `runPwsh()` 是 JSON 通道：裸字符串输出会过不了 `JSON.parse` 被当错误吞掉，
+   兜底查询必须包 `ConvertTo-Json`。
+3. 便携 pwsh 从 U 盘冷 spawn 很慢，15s 超时会被掩——兜底查询超时给到 60s
+   （结果按盘符缓存，每会话每卷只探测一次）。

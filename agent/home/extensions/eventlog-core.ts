@@ -413,6 +413,7 @@ export interface CoreEvent {
 	provider: string;
 	id: number;
 	msg: string | null; // ≤200 字符单行简述；无消息文本为 null
+	atypical?: boolean; // crash scope 专用：provider 非典型崩溃来源（ID 可能被第三方复用），请人工判读
 }
 
 export interface CountRow {
@@ -580,6 +581,19 @@ export const WHEA_PROVIDER = "Microsoft-Windows-WHEA-Logger"; // 精确名实测
 
 /** crash：官方崩溃文档 1000/1001 + 启动失败补充 1026/33·35 */
 export const CRASH_IDS = [1000, 1001, 1002, 1026, 33, 35];
+/** 1000/1001/1002/1026 硬压 Error 级：真崩溃以 Error 级写入；部分服务（如 VMware）
+ *  以 Information 级复用 ID 1000 记普通运行日志，不压级别会造成整屏误报。 */
+export const CRASH_IDS_ERROR = [1000, 1001, 1002, 1026];
+/** 33/35（SideBySide）级别未逐条核实，保持不限级别，避免漏报 */
+export const CRASH_IDS_ANY = [33, 35];
+/** crash 的典型崩溃来源 provider（软标注用）：命中但 provider 不在名单内的标 atypical */
+export const CRASH_TYPICAL_PROVIDERS = [
+	"Application Error", // 1000
+	"Windows Error Reporting", // 1001
+	".NET Runtime", // 1026
+	"Application Hang", // 1002
+	"SideBySide", // 33/35
+];
 
 /** service：对 SCM 提供者全表交叉核对（ListProvider 解码 0xC0000000+N，
  *  全部 Error 级；7025 本机表未声明，按设计保留，下推多一个永不命中的 ID 无害）；
@@ -838,11 +852,24 @@ async function routeScope(
 		}
 		case "crash": {
 			const app = optStr(params.app, "app");
-			const r = await queryEvents({ logNames: ["Application"], ids: CRASH_IDS, msgLike: app, hours, top });
+			// 硬过滤：1000/1001/1002/1026 只认 Error 级（VMware 类以 Information 级复用 1000 的普通日志被滤）；
+			// 33/35 不限级别（级别未逐条核实，避免漏报）
+			const groups: Parameters<typeof queryEvents>[0] = [
+				{ logNames: ["Application"], ids: CRASH_IDS_ERROR, level: "error", msgLike: app, hours, top },
+				{ logNames: ["Application"], ids: CRASH_IDS_ANY, msgLike: app, hours, top },
+			];
+			const r = await queryEvents(groups);
 			const out = payload(
 				r,
-				`crash：白名单=崩溃 1000 / WER 1001 / 无响应 1002 / .NET Runtime 1026 / SideBySide 33·35。${app ? `app 过滤=「${app}」（消息子串，不区分大小写）。` : ""}`,
+				`crash：白名单=崩溃 1000 / WER 1001 / 无响应 1002 / .NET Runtime 1026（仅 Error 级：部分服务以 Information 级复用 1000 记普通日志，已滤）/ SideBySide 33·35（不限级别）。${app ? `app 过滤=「${app}」（消息子串，不区分大小写）。` : ""}atypical=true=provider 非典型崩溃来源，请人工判读。`,
 			);
+			if (!out.error) {
+				// 软标注：Error 级命中里 provider 不属于典型崩溃来源的，标出来请人工判读
+				const typical = new Set(CRASH_TYPICAL_PROVIDERS.map((p) => p.toLowerCase()));
+				for (const ev of ((out.events as CoreEvent[]) ?? []) as (CoreEvent & { atypical?: boolean })[]) {
+					if (!typical.has(ev.provider.toLowerCase())) ev.atypical = true;
+				}
+			}
 			if (!out.error && app) out.app = app;
 			return out;
 		}

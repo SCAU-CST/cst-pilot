@@ -46,7 +46,7 @@ Function schema（每次请求的 tools 数组中）：
     "required": ["scope"],
     "properties": {
       "scope": { "type": "string", "enum": ["space", "info", "health", "usage", "all"] },
-      "drive": { "type": "string", "description": "scope=space/info/health 可选，限定盘符，如 \"C\" 或 \"C:\\"。省略则返回全部卷。" },
+      "drive": { "type": "string", "description": "scope=space/info/health 可选，限定盘符，如 \"C\" 或 \"C:\\"。省略则返回全部卷。info 下为双过滤（卷按盘符滤，物理盘只留所在盘）。" },
       "path":  { "type": "string", "description": "scope=usage 必填。要分析的目录或盘符，如 \"C:\\\\"、\"C:\\\\Users\"。整个目录树会被统计。" },
       "top":   { "type": "number", "description": "scope=usage 可选，返回占用最大的前 N 个目录，默认 20，上限 100。" }
     }
@@ -76,7 +76,13 @@ disk({ scope: "space" })
 
 ```
 disk({ scope: "info" })
+disk({ scope: "info", drive: "H" })   // 双过滤：卷按盘符滤，物理盘只留所在盘
 ```
+
+`drive` 过滤是完整版语义：卷按盘符直接滤；物理盘按盘符→分区→物理盘关联
+（`Win32_LogicalDiskToPartition`，一次查询拿全映射，结果按盘符缓存）只留该卷
+所在的物理盘。关联查询失败时退回全量清单并在 `infoNotice` 如实声明，
+不吞数据也不假装已过滤。
 
 ```jsonc
 {
@@ -157,6 +163,12 @@ disk({ scope: "usage", path: "E:\\Learning\\Programming\\cst-pilot\\doc", top: 5
 MFT（NTFS Master File Table，主文件表）记录卷上所有文件的位置与大小。
 WizTree 便携版（仓库自带）直读 MFT，全盘秒级，实测普通权限也可用（`/admin=0`）。
 导出 CSV 后流式解析，一次遍历产出四张表。
+
+**method 按卷类型标注**：MFT 捷径仅 NTFS 有效。FAT32/exFAT/UNC 卷无 MFT，
+WizTree 实际走目录遍历（仍可用，结果为全量但非 MFT 精确账）。探测：fsutil 快路径
++ pwsh CIM 兜底（`fsutil fsinfo volumeinfo` 对 NTFS 系统卷非管理员会拒绝访问），
+结果按盘符缓存。NTFS → `method: "wiztree-mft"`；其余 → `method: "wiztree-walk"`
+且 notice 说明；探测全失败时不瞎标，notice 如实声明。详见 [Notice.md](../Notice.md)。
 
 **表头无关解析**：WizTree 的 CSV 表头随系统语言变化（中文系统出中文表头）。
 解析按行首正则 `^"(.+)",(\d+),` 取路径和字节，目录行以路径尾分隔符区分，

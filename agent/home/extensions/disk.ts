@@ -79,10 +79,15 @@ async function runPwsh(command: string, timeoutMs = 15000): Promise<any> {
 }
 
 const DISK_INFO_CMD =
-	"Get-PhysicalDisk | Select-Object FriendlyName,SerialNumber,MediaType,BusType,HealthStatus,OperationalStatus,Size | ConvertTo-Json -Depth 3";
+	"Get-PhysicalDisk | Select-Object FriendlyName,SerialNumber,MediaType,BusType,HealthStatus,OperationalStatus,Size,DeviceId | ConvertTo-Json -Depth 3";
 
 const VOLUME_CMD =
 	"Get-CimInstance Win32_LogicalDisk | Select-Object DeviceID,VolumeName,FileSystem,DriveType,Size,FreeSpace | ConvertTo-Json -Depth 3";
+
+// 盘符→物理盘关联（drive 过滤 info 用）：CIM 引用属性是对象，必须 ToString() 投影成字符串，
+// 形态如 Win32_LogicalDisk (DeviceID = "C:") / Win32_DiskPartition (DeviceID = "Disk #1, Partition #1")
+const DISK_ASSOC_CMD =
+	"Get-CimInstance Win32_LogicalDiskToPartition | Select-Object @{n='Dep';e={$_.Dependent.ToString()}},@{n='Ant';e={$_.Antecedent.ToString()}} | ConvertTo-Json -Depth 3";
 
 const SMART_CMD =
 	"try { Get-PhysicalDisk -ErrorAction Stop | Get-StorageReliabilityCounter -ErrorAction Stop | Select-Object DeviceId,Wear,Temperature,PowerOnHours,ReadErrorsTotal,WriteErrorsTotal | ConvertTo-Json -Depth 3 } catch { ConvertTo-Json @{ error = ($_ | Out-String).Trim() } }";
@@ -155,6 +160,48 @@ function parseWizDate(s: string): Date | null {
 	const m = s.match(/(\d{4})\/(\d{2})\/(\d{2})\s+(\d{2}):(\d{2}):(\d{2})/);
 	if (!m) return null;
 	return new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]);
+}
+
+/* 卷文件系统判定：WizTree 的 MFT 捷径仅 NTFS 有效，FAT32/exFAT/UNC 上它实际走目录遍历，
+ * method 必须按卷类型标注，否则 FAT32 上会冒出假的 "wiztree-mft"。结果按盘符缓存。
+ * fsutil 快路径对 NTFS 系统卷可能拒绝访问（实测错误 5），失败时用 pwsh CIM 兜底。 */
+const volFsCache = new Map<string, string | null>();
+async function volumeFs(drive: string | null): Promise<string | null> {
+	if (!drive) return null; // UNC 无盘符，保守按非 NTFS 处理
+	const key = drive.toUpperCase();
+	const hit = volFsCache.get(key);
+	if (hit !== undefined) return hit;
+	let fs: string | null = null;
+	try {
+		const r = await execFileP("fsutil", ["fsinfo", "volumeinfo", drive], {
+			timeout: 15000,
+			windowsHide: true,
+			encoding: "buffer",
+			maxBuffer: 1024 * 1024,
+		});
+		// FS 名称本身是英文，不随系统语言本地化，直接在输出里找
+		const m = String(decodeBuffer(r.stdout as Buffer)).match(/(NTFS|FAT32|exFAT|FAT16|ReFS)/i);
+		fs = m ? m[1].toUpperCase() : null;
+	} catch {
+		fs = null;
+	}
+	if (!fs) {
+		// 兜底：CIM 查询普通权限可用（info scope 同源）
+		// runPwsh 是 JSON 通道：裸字符串会解析失败被当错误，必须 ConvertTo-Json
+		try {
+			const r = await runPwsh(
+				`(Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='${drive}'").FileSystem | ConvertTo-Json`,
+				60000,
+			); // U 盘 pwsh 冷 spawn 慢，15s 会被掐
+			const s = typeof r === "string" ? r : String((r as any).stdout ?? "");
+			const m = s.match(/(NTFS|FAT32|exFAT|FAT16|ReFS)/i);
+			fs = m ? m[1].toUpperCase() : null;
+		} catch {
+			fs = null;
+		}
+	}
+	volFsCache.set(key, fs);
+	return fs;
 }
 
 function usageViaWizTree(rootPath: string, topN: number): Promise<any> {
@@ -232,13 +279,18 @@ function usageViaWizTree(rootPath: string, topN: number): Promise<any> {
 			}
 			if (rows === 0) return { error: "WizTree CSV 无数据行" };
 
+			const fsName = await volumeFs(drive);
+			const isNtfs = fsName === "NTFS";
+			// 判不出 FS（探测全失败）时不瞎标，保持 wiztree-mft 仅作事实记录并提示待确认
+			const fsLabel = fsName ?? "未知（探测失败）";
+
 			const extAgg = [...extMap.entries()]
 				.map(([ext, v]) => ({ ext, files: v.files, sizeGB: fmtGB2(v.bytes) }))
 				.sort((a, b) => b.sizeGB - a.sizeGB)
 				.slice(0, Math.min(topN, 40));
 
 			return {
-				method: "wiztree-mft",
+				method: isNtfs ? "wiztree-mft" : "wiztree-walk",
 				root: rootPath,
 				totalGB: totalBytes ? fmtGB2(totalBytes) : null,
 				topDirs: dirTop.get().map((r) => ({
@@ -257,7 +309,11 @@ function usageViaWizTree(rootPath: string, topN: number): Promise<any> {
 					sizeGB: fmtGB2(r.bytes),
 					modified: r.modified,
 				})),
-				notice: `WizTree 全量 MFT 导出（${rows} 行，其中文件 ${files} 个）。topDirs=目录排行；topFiles=单个大文件；extAgg=按扩展名聚合（含文件数）；staleFiles=≥50MB 且 ≥1 年未修改的文件（大者优先）。全部只读统计。`,
+				notice: isNtfs
+					? `WizTree 全量 MFT 导出（${rows} 行，其中文件 ${files} 个）。topDirs=目录排行；topFiles=单个大文件；extAgg=按扩展名聚合（含文件数）；staleFiles=≥50MB 且 ≥1 年未修改的文件（大者优先）。全部只读统计。`
+					: fsName
+						? `WizTree 扫描：${fsLabel} 卷无 MFT，实际走目录遍历（${rows} 行，其中文件 ${files} 个），非 MFT 精确账。topDirs=目录排行；topFiles=单个大文件；extAgg=按扩展名聚合（含文件数）；staleFiles=≥50MB 且 ≥1 年未修改的文件（大者优先）。全部只读统计。`
+						: `WizTree 扫描：卷文件系统探测失败（${rows} 行，其中文件 ${files} 个），请按 method=wiztree-walk 理解为目录遍历结果。topDirs=目录排行；topFiles=单个大文件；extAgg=按扩展名聚合（含文件数）；staleFiles=≥50MB 且 ≥1 年未修改的文件（大者优先）。全部只读统计。`,
 			};
 		} catch (e: any) {
 			return { error: String(e?.message ?? e).slice(0, 500) };
@@ -394,11 +450,38 @@ export default function (pi: any) {
 			if (scope === "info" || scope === "all") {
 				const phys = await runPwsh(DISK_INFO_CMD);
 				const vols = await runPwsh(VOLUME_CMD);
+				let physRows: any[] = Array.isArray(phys) ? phys : [];
+				let volRows: any[] = Array.isArray(vols) ? vols : [];
+				if (drive && Array.isArray(phys) && Array.isArray(vols)) {
+					// drive 过滤（完整版）：卷按盘符滤；物理盘按盘符→分区→物理盘关联滤
+					try {
+						const assoc = await runPwsh(DISK_ASSOC_CMD);
+						if (!Array.isArray(assoc)) throw new Error("关联查询返回非数组");
+						const diskIdx = new Set<string>();
+						for (const a of assoc) {
+							const dep = String(a.Dep ?? "").match(/DeviceID\s*=\s*"([A-Za-z]:)"/);
+							if (!dep || dep[1].toUpperCase() !== `${drive}:`) continue;
+							const d = String(a.Ant ?? "").match(/Disk #(\d+)/i);
+							if (d) diskIdx.add(d[1]);
+						}
+						// CIM 把 DeviceId 序列化成纯数字字符串（"0"/"1"/"2"），与 Disk #N 直接对应
+						physRows = physRows.filter((d: any) => diskIdx.has(String(d.DeviceId)));
+						volRows = volRows.filter(
+							(v: any) =>
+								String(v.DeviceID ?? "")
+									.replace(/[^A-Za-z]/g, "")
+									.toUpperCase() === drive,
+						);
+					} catch (e) {
+						// 关联失败不吞数据：退回全量清单并如实提示，避免队员误以为已过滤
+						result.infoNotice = `盘符→物理盘关联查询失败（${String((e as any)?.message ?? e).slice(0, 120)}），info 返回全量清单未按 ${drive}: 过滤`;
+					}
+				}
 				result.physicalDisks = Array.isArray(phys)
-					? phys.map((d: any) => ({ ...d, sizeGB: fmtGB(d.Size), Size: undefined }))
+					? physRows.map((d: any) => ({ ...d, sizeGB: fmtGB(d.Size), Size: undefined }))
 					: phys;
 				result.volumes = Array.isArray(vols)
-					? vols.map((v: any) => ({
+					? volRows.map((v: any) => ({
 							drive: v.DeviceID,
 							label: v.VolumeName,
 							fs: v.FileSystem,
