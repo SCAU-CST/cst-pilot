@@ -1,125 +1,69 @@
-# ls — 目录浏览工具
+# ls：目录大小浏览
 
-实现：`agent\home\extensions\ls.ts`。覆盖 pi 内置 ls。
+列出目录的直接子项，按大小排序，适合逐层查找空间占用。需要整棵目录树的大文件、扩展名或旧文件排行时，使用 [disk usage](disk.md#usage占用分析)。
 
-## 背景
+实现：[ls.ts](../../agent/home/extensions/ls.ts)。本工具覆盖 pi 内置 `ls`，保留目录浏览入口并补充大小和占比。
 
-维修场景的第一步往往是"C 盘怎么满了，这个目录下谁占得最多"。
-pi 内置 ls 的先天缺陷：stat 已经拿到文件大小，输出时却丢弃——
-模型只看到文件名列表，回答不了体积分布问题。
+## 调用
 
-本工具以同名覆盖内置（扩展后注册即覆盖，模型零学习成本）：
-输出仍是目录列表，但每项带上大小和占比。
-
-## 调用方式
+```js
+ls({ path: "C:\\Users", top: 10 })
+```
 
 | 参数 | 必填 | 说明 |
 |---|---|---|
-| `path` | 是 | 要浏览的目录 |
-| `top` | 否 | 返回前 N 项，默认 20，上限 50 |
+| `path` | 是 | 目录路径 |
+| `top` | 否 | 返回项数，默认 20，最大 50 |
 
-## LLM 收到的提示词
+## 返回
 
-系统提示词 `Available tools:` 列表中的行：
+| 字段 | 说明 |
+|---|---|
+| `path` | 规范化后的目录路径 |
+| `totalChildren` | 直接子项数 |
+| `totalSize` | 已统计子项的大小合计；不完整时为下界 |
+| `method` | `wiztree-index`：使用共享缓存；`walk`：递归统计 |
+| `entries[]` | 大小倒序；每项包含 `name`、`type`、`size`、`bytes`、`pct` |
+| `omitted` | 截断时返回剩余项数、已知大小合计及 `unknownCount` |
+| `notice` | 权限或预算导致统计不完整时说明原因 |
 
-```
-- ls: List directory contents with sizes and percentages (read-only)
-```
+`type` 为 `dir`、`file` 或 `unknown`。无法确定大小时，`bytes` 和 `size` 为 `null`，不会当成 0；数据不完整或合计为 0 时，`pct` 为 `null`。
 
-系统提示词 `Guidelines:` 中的条目：
-
-```
-- Use ls to browse a directory's size distribution; use disk scope=usage for full-tree analysis of large paths.
-```
-
-Function schema（每次请求的 tools 数组中）：
-
-```jsonc
+```json
 {
-  "name": "ls",
-  "description": "列出目录的直接子项（文件和子文件夹），按占用大小从大到小排序，默认返回最大的前 20 项。文件显示字节大小，子文件夹显示递归聚合大小，每项附带占父目录的百分比。若被截断，会报告剩余项数与合计。用于浏览任意目录的内容与体积分布。",
-  "parameters": {
-    "type": "object",
-    "required": ["path"],
-    "properties": {
-      "path": { "type": "string", "description": "要浏览的目录路径" },
-      "top":   { "type": "number", "description": "返回前 N 项（默认 20，最大 50）" }
-    }
-  }
-}
-```
-
-## 调用与输出实例
-
-```
-ls({ path: "E:\\Learning\\Programming\\cst-pilot", top: 5 })
-```
-
-```jsonc
-{
-  "path": "E:\\Learning\\Programming\\cst-pilot",
-  "totalChildren": 7,
-  "totalSize": "528.1 MB",
-  "method": "wiztree-index",          // 走了共享账本，见 wz-index.md
-  "entries": [                        // 按大小倒序
-    { "name": "pwsh",   "type": "dir",  "size": "244.7 MB", "bytes": 256592846, "pct": 46.3 },
-    { "name": "agent",  "type": "dir",  "size": "169.6 MB", "bytes": 177848769, "pct": 32.1 },
-    { "name": "node",   "type": "dir",  "size": "94.9 MB",  "bytes": 99511443,  "pct": 18 },
-    { "name": "wiztree","type": "dir",  "size": "18.8 MB",  "bytes": 19749559,  "pct": 3.6 },
-    { "name": "doc",    "type": "dir",  "size": "26.2 KB",  "bytes": 26801,     "pct": 0 }
+  "path": "C:\\Example",
+  "totalChildren": 2,
+  "totalSize": "3.0 MB",
+  "method": "walk",
+  "entries": [
+    { "name": "data.bin", "type": "file", "size": "3.0 MB", "bytes": 3145728, "pct": null },
+    { "name": "locked", "type": "unknown", "size": null, "bytes": null, "pct": null }
   ],
-  "omitted": {                        // 被截掉的项不静默丢弃
-    "count": 2,
-    "size": "3.1 KB",
-    "note": "已按大小截断，其余为小项"
-  }
+  "notice": "部分子项大小未统计完整（熔断或无权限），所示大小为下界"
 }
 ```
 
-本次实测 12.7 秒：这是该盘在本进程内的**首次**查询，触发了 WizTree
-全盘扫描建账。之后同盘任意路径秒回。
+路径不存在等错误返回 `{ "error": "原因" }`。
 
-出错时的形态：
+## 大小来源
 
-```jsonc
-{ "error": "路径不存在: C:\\not-exist-dir-xyz" }
+```mermaid
+flowchart LR
+    A[目录查询] --> B[校验卷身份并查询共享缓存]
+    B -->|命中| C[读取目录和大文件大小]
+    B -->|缺失或不可用| D[递归统计]
+    C --> E[排序并返回前 N 项]
+    D --> E
 ```
 
-## 实现
+[共享缓存](wz-index.md) 缺失时可能先触发全盘 WizTree 扫描。后续查询可复用已缓存的路径，但同一卷内的文件变化不会实时刷新。
 
-### 大小引擎：两级
+递归路径共用 **50 万条目、30 秒**预算，目录和文件均计入；达到任一限制后停止继续遍历，并标注下界。递归遇到符号链接或 junction 时跳过以避免环路。
 
-```
-ensureIndex(target)          ← wz-index 共享账本（见 wz-index.md）
-  ├─ 账本命中 → 直接查 Map，同盘任意路径秒回（method: "wiztree-index"）
-  └─ 缺账/无账本 → walkSize() 递归累计（method: "walk"）
-```
+同步 stat 失败后尝试异步 stat，再查询目录或大文件缓存；仍不可读则保留未知状态。大小为 0 的文件也会尝试用大文件缓存补充，以处理部分系统独占文件的读取限制。递归统计结果不写入共享缓存，避免将不完整数据长期复用。
 
-walkSize 降级路径有两个熔断：最多 stat 50 万个文件、总时长 30 秒。
-任一触发后输出 `notice: "所示大小为下界"`。符号链接 / junction 一律跳过防环路。
+## 限制
 
-### 假 0 兜底
-
-`statSync` 对 pagefile.sys 等系统独占文件返回大小 0（无法真正打开）。
-文件大小为 0 时查 wz-index 的文件账本（MFT 真实字节）兜底。
-
-### stat 失败的补查链
-
-权限不足或文件锁定导致同步 stat 抛异常时，依次尝试：
-异步 `fsp.stat` 补查 → 目录查账本 `dirs` / 文件查账本 `files` → 记 0 并标记不完整。
-
-## 取舍
-
-| 决策 | 备选 | 理由 |
-|---|---|---|
-| 覆盖内置 ls | 新工具名 | `ls` 是模型列目录的第一反射；新名字要先学存在，还可能先调内置拿到无用结果 |
-| 目录大小走账本 | 每次实时递归 | 实时递归在大目录上分钟级；账本让同盘第二次查询秒回 |
-| walk 结果不入账本 | 降级数据也缓存 | walk 是熔断下界，入账会永久污染账本精度（详见 wz-index.md） |
-| 截断 + omitted 汇总 | 全量返回 / 纯截断 | 全量在万级子项目录撑爆上下文；纯截断让模型误以为列表完整 |
-| 输出带 pct | 只给绝对值 | 维修人员关心"谁占大头"，百分比比字节数直接 |
-
-## 已知限制
-
-- 冷启动首次查询要等全盘扫描（数十秒），之后同盘秒回
-- walk 降级路径的文件夹大小是下界（权限目录未计入）
-- UNC 路径（网络共享）无账本，恒走 walk
+- 首次建缓存耗时取决于卷大小、文件数量、权限和介质速度，不能保证秒回。
+- UNC 路径不建共享缓存，使用递归统计。
+- `totalSize` 是已统计大小，不等于物理分配空间；存在未知条目时不能据此推断目录总量。

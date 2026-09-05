@@ -1,176 +1,69 @@
-# Design — eventlog 事件日志工具
+# eventlog 设计
 
+状态：八个 scope 已实现。需求：[PRD R6](../PRD.md)；接口与事件清单：[eventlog](../tool/eventlog.md)。
 
-## TLDR
+## 目标与边界
 
-维修场景的故障线索（意外关机、蓝屏、崩溃、服务失败）
-都沉淀在事件日志里，目前只能手动翻。
-新增 `eventlog` 工具让 pi 直接读取并汇总。
-单工具多 scope（sys 同构）、`runPwsh()` + `Get-WinEvent`、
-只读、返回 `data / notice / error`。
+读取历史故障线索，减少手动翻阅事件查看器的工作。工具只查询当前系统日志，不清理、修改配置或写出日志文件。sys 负责实时负载；disk SMART 反映设备可靠性，eventlog 反映系统记录的异常。
 
-## 接口
+采用单工具多 scope：recent 默认入口，boot/crash/service/disk/security 面向固定场景，query 覆盖其他查询，detail 获取原文。各 scope 的参数独立；logName 只属于 query/detail，不能覆盖固定场景的通道。
 
-TS 语法：`?` 可选，`|` 枚举。
-「写死」= 常量在代码里，模型不可改。
-无全局覆盖模式：每个分支自含全部参数，
-允许什么、写死什么，看分支即可。
+## 查询流程
 
-```
-event({ scope, ... })
-│
-├─ scope="recent"    兜底：近 N 小时错误 / 警告汇总
-│   ├─ level?= "warn"(默认) | "error"   最低级别
-│   ├─ hours?=24    top?=100
-│   └─ logName 写死: System + Application
-│
-├─ scope="boot"      意外关机 / 蓝屏 / 开关机历史
-│   ├─ kind?= "all"(默认) | "unexpected" | "bluescreen"
-│   │            unexpected → 41·6008
-│   │            bluescreen → 1001 + WHEA-Logger
-│   ├─ hours?=24    top?=100
-│   ├─ logName 写死: System
-│   └─ ID 白名单写死（官方重启排查清单）:
-│        12·13·6005·6006·6009    内核 / 事件服务启停标记
-│        41·6008·1001            意外重启与蓝屏详情
-│        1074·19·7045            重启原因：人为 / 更新 / 新装服务
-│        + WHEA-Logger            硬件错误报告
-│
-├─ scope="crash"     应用崩溃 / 启动失败，含故障模块名
-│   ├─ app?: 程序名 / 模块名模糊过滤
-│   ├─ hours?=24    top?=100
-│   ├─ logName 写死: Application
-│   └─ ID 白名单写死:
-│        1000·1001·1002     崩溃 / WER / 无响应（官方崩溃文档）
-│        1026               .NET Runtime 启动即崩
-│        33·35 (SideBySide) 并行配置不正确，老软件打不开
-│
-├─ scope="service"   服务异常：启动失败/挂起/崩溃/未正常关闭
-│   ├─ name?: 服务名模糊过滤
-│   ├─ hours?=24    top?=100
-│   ├─ logName 写死: System
-│   └─ ID 白名单写死（对 SCM 提供者全表交叉核对）:
-│        7000·7001·7002·7003        启动失败（含依赖 / 组）
-│        7013·7038·7041              账户密码 / 登录失败 / 权限不足
-│        7009·7011·7022              超时 / 挂起
-│        7023·7024·7031·7032·7034   异常终止（7032 = 恢复动作也失败）
-│        7043                        未正常关闭
-│        7025·7026                   启动期汇总 / 驱动加载失败
-│
-├─ scope="disk"      磁盘 / 文件系统报错
-│   ├─ hours?=24    top?=100
-│   ├─ logName 写死: System
-│   └─ ID 白名单写死:
-│        7·11·51                 坏块 / 控制器 / 分页错误
-│        129·153                 超时重试，坏盘前兆
-│        55·98·50·140 (Ntfs)     文件系统损坏 / 写失败
-│        157                     非可移动盘被意外移除（掉盘）
-│
-├─ scope="security"  登录审计（需管理员，无权限 notice 降级）
-│   ├─ type?= "all"(默认) | "logonFail" | "lockout"
-│   │            logonFail → 4625    lockout → 4740
-│   ├─ hours?=24    top?=100
-│   ├─ logName 写死: Security
-│   └─ ID 白名单写死: 4624·4625·4740
-│
-├─ scope="query"     自定义查询，覆盖长尾
-│   ├─ ids?: number[]
-│   ├─ level?: 枚举，同 recent
-│   ├─ provider?: 正则校验后 -match
-│   ├─ msg?: 消息子串，pwsh 侧后置
-│   ├─ hours?=24    top?=100
-│   └─ logName?: 任意通道，默认 System + Application
-│
-└─ scope="detail"    单条详情与原文
-    ├─ recordId? 或 id?   二选一必传，id 取最近一条
-    └─ logName 必传（无预设）
+```mermaid
+flowchart LR
+    A[校验结构化参数] --> B[按组下推查询]
+    B --> C[消息或提供程序后置过滤]
+    C --> D[按通道和记录号去重]
+    D --> E[统计全部命中]
+    E --> F[返回最新样本和计数表]
 ```
 
-- `hours` / `top` 各分支语义相同，故重复列出；
-  `logName` 不是可覆盖的全局参数，
-  仅 `query`（可选）和 `detail`（必传）拥有它
-- 白名单来源分级：boot/disk 清单取自微软官方排查文档；
-  service 对 SCM 提供者全量事件表逐条核对（7000–7045），
-  明确不收：一次性配置类（7005–7008·7012–7021·7027–7030·7033·7037）
-  与信息 / 提示级（7035·7036·7039·7040·7042·7044）；
-  crash 的 1026/33/35 为启动失败场景补充
-  （官方崩溃文档仅含 1000/1001）
-- 1001 双重身份：System 通道 = BugCheck（归 boot），
-  Application 通道 = WER（归 crash）；两 scope 通道互斥，无冲突
-- security 覆盖工作组/本地场景；域环境的 Kerberos 失败
-  （4771）不覆盖【维修场景不涉及，已定边界】
-- 模糊过滤 pwsh 侧后置 `-match`，ID 白名单已下推，后置量小
+数据源为便携 pwsh 的 Get-WinEvent。FilterHashtable 下推 LogName、Level、StartTime、Id、ProviderName；组内 AND、组间 OR。boot 的 ID 与 WHEA 可能重叠，按 logName/recordId 去重后再取全局 top。
 
-## 返回与体积
+消息过滤使用 OrdinalIgnoreCase 子串匹配；provider 正则使用 IgnoreCase 和 1 秒 MatchTimeout。多个分组只允许使用相同后置条件，确保 crash.app 能覆盖全部分组。
 
-无法预知命中量（坏机器一天可刷上千条 WER），三条硬规则：
+## 事件范围
 
-- `top=100` 上限，时间倒序
-- 重复折叠：`data` 附 来源/ID 计数表
-  （`SCM/7034 × 37，最近 10:32`）
-- 简述截 200 字符，全文留给 `detail`
+| 场景 | 设计依据与边界 |
+|---|---|
+| boot | 启停、意外关机、蓝屏、更新、新装服务和 WHEA；事件未必直接代表故障 |
+| crash | 提供程序与 ID 配对；WER/Hang 保留原始级别，避免丢失 Information 级报告 |
+| service | SCM 故障白名单；排除普通状态变化和一次性配置通知 |
+| disk | 坏块、控制器、文件系统、超时重试和掉盘线索 |
+| security | 4624/4625/4740；不覆盖域 Kerberos 4771 等事件 |
+| query | ID、级别、通道和后置条件组合，补充固定清单之外的事件 |
 
-`data.total` + `notice` 说明截断。
-最坏 100 条 × ~300B + 聚合表 ≈ 十几 KB，与机器健康状况无关。
-默认 warn 后噪音上升，由折叠计数表兜住——
-警告刷屏机器上模型看到的是「N 条重复」而不是 N 行。
+清单源于项目原有微软排查资料和 SCM 提供者表核对，不应当作“全部故障事件”目录。完整 ID 保留在 [工具文档](../tool/eventlog.md#内置事件范围)，避免两处维护。
 
-## 采集与安全
+## 输出控制
 
-- `FilterHashtable` 下推：
-  LogName / Level / StartTime / Id / ProviderName
-- 注入防护：模型输入只进结构化字段，逐个白名单校验；
-  不做 `FilterXml` / 裸 XPath；命令串写死（仓库约定）
-- 管理员：Security 无权限时 `notice` 降级，其余照常（sys 模式）
+| 规则 | 目的 |
+|---|---|
+| events 默认及最多 100 条 | 保留最新样本，限制输出 |
+| counts 按 provider/ID 汇总，最多 100 组 | 看见重复事件的数量，避免逐条阅读 |
+| 简述最多 200 字符 | 原文留给 detail |
+| detail 最多 20,000 字符 | 防止单条长报告占满上下文 |
+| total、truncated、countsTruncated | 明确样本和统计表是否完整 |
+| firstTime/lastTime | 说明返回样本的时间跨度，不承诺日志覆盖整个窗口 |
 
-## 边界
+只有计数表未截断时，sum(counts.n) 才应等于 total。输出有界不等于枚举成本恒定：消息过滤仍需读取命中记录，宽泛查询可能超时。
 
-- vs `sys`：sys 管实时负载，event 管历史痕迹
-- vs `disk`：SMART 是硬件自身健康，event 是系统视角 I/O 异常
-- 日志清理 / 保存 / 配置：一律不做，只读
+## 失败处理与安全
 
-## 里程碑
+| 决策 | 原因 |
+|---|---|
+| SilentlyContinue 枚举后分类 $Error | 个别 EventLogException 不应终止全部查询；跳过数量需要返回 |
+| 按异常类型与 FQID 分类 | 不依赖本地化错误文本 |
+| 区分零命中、提供程序不匹配、缺失通道 | “没有事件”和“无法查询”含义不同 |
+| Security 显式检查管理员身份 | 历史实测无权限时可能静默零命中；探测失败不缓存为非管理员 |
+| 动态字符串编码为数据 | 防止 ASCII/弯引号改变脚本语法 |
+| detail 使用固定 EventRecordID XPath 模板 | FilterHashtable 不支持记录号；只允许校验后的整数进入模板 |
 
-编号即顺序，1–2 是地基，后续 scope 逐个端到端；
-每步均按 sys 惯例用直连 harness（`tests/_t*.mjs`）验证。
+detail 的 XML 元素是 EventRecordID，PowerShell 属性是 RecordId。事件 ID 0 合法；System/1001 与 Application/1001 需要按通道区分。
 
-- [x] 1. 核心链路：runPwsh + Get-WinEvent 下推
-       （LogName / Level / StartTime / Id / ProviderName）
-       —— 2026-09-03，tests/_t9.mjs。实测：下推全部可用，Level 接受数组
-       （warn=@(1,2,3) / error=@(1,2)）；默认时间倒序；枚举必须
-       SilentlyContinue（毒事件=EventLogException 被跳过，Stop 会炸整条查询），
-       零命中与 provider 未匹配按 FQID 语言无关判据吸收（详见 core 文件头）
-- [x] 2. 返回与体积：top / 来源·ID 折叠计数表 /
-       200 字符截断 / data.total + notice
-       —— 2026-09-03，tests/_t9.mjs。折叠不变量 sum(counts.n)==total 实测成立；
-       注入校验（logNames/ids/providers 白名单拒绝 + 数字夹紧）全绿
-- [x] 3. `recent`（首个端到端 scope，含缺省兜底）
-       —— 2026-09-03，tests/_t10.mjs（无 scope 兜底 recent；level 默认 warn）
-- [x] 4. `boot` / `crash`：主力场景，白名单已对官方文档核定
-       —— 2026-09-03，tests/_t10.mjs。WHEA 精确名 = Microsoft-Windows-WHEA-Logger
-       （下推用全名），其声明 ID 19 与白名单 19 重叠 → boot 多组 OR +
-       $seen（logName/recordId）去重落地；crash 消息子串过滤实测
-- [x] 5. `service` / `disk`：白名单落地；
-       service 用本机 SCM 提供者反查事件 ID 作终验
-       —— 2026-09-03，tests/_t10.mjs。SCM ListProvider 全表交叉核对通过
-       （声明 ID 高位编码 0xC0000000+N，解码后白名单全 Error 级；7025 本机表
-       未声明，按设计保留；排除项 7035/7036/7039/7040/7042/7044 确为信息级）
-- [x] 6. `query`：结构化自定义查询 + 逐字段注入校验
-       —— 2026-09-03，tests/_t10.mjs。provider 正则带 1s MatchTimeout
-       （防灾难性回溯，编译失败结构化上报）；msg 用 IndexOf
-       OrdinalIgnoreCase（零回溯）；ids/level/logName 白名单校验
-- [x] 7. `detail`：recordId / id 直取原文
-       —— 2026-09-03，tests/_t10.mjs。recordId 走 EventRecordID XPath 模板
-       （PS 属性叫 RecordId，XML 元素是 EventRecordID）；模板写死、仅插入整数
-       校验后的值，与 FilterHashtable 插值同安全模型，无模型可控过滤表达式；
-       原文保留换行，20k 字符封顶并标记
-- [x] 8. `security`【已拍板本期实现（2026-09-03）】：权限降级实测
-       —— tests/_t10.mjs。关键实测：非管理员下 FilterHashtable 查 Security
-       会静默返回 0 条（NoMatchingEventsFound）而非报拒绝访问 ——
-       若只靠错误分类，「没权限」会伪装成「没有登录事件」；
-       故 security 做显式 admin 预检（isAdminPwsh，进程内缓存）后 notice 降级
-- [x] 9. 收尾：doc/tool/eventlog.md + PRD 更新 + 工具描述打磨
-       —— 2026-09-03。doc/tool/eventlog.md（维护者文档，含实测数据与取舍表）、
-       PRD R6 + 缺口关闭 + doc/tool/README.md 索引；工具描述加入与 sys 的分工提示；
-       全部 extensions 过 biome（沿用 pi 上游 biome.json 标准，2.3.5）：格式化 +
-       organizeImports + 清死代码/未用变量/implicit any，89+59 harness 回归全过
+## 实施记录
+
+2026-09-03 完成核心查询、聚合、八个 scope、权限预检和文档；本地 `_t9.mjs`、`_t10.mjs` 历史记录为 89 + 59 项验证通过。SCM 元数据的事件 ID 带高位编码，核对时需解码；7025 在当时样机未声明，按既有范围保留。
+
+2026-09-05 修正字符串边界、多组消息过滤、崩溃提供程序/级别和管理员缓存。历史查询耗时与留存风险见 [测试日志](../test/Testlog.md)；原有测试次数不代表本次重新执行。

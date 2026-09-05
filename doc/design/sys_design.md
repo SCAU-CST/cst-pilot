@@ -1,111 +1,68 @@
-# Design — sys 系统检查工具
+# sys 设计
 
-对应 `doc\PRD.md`，R1–R5 逐条落位，已全部实现（2026-09-01）。
+状态：已实现。需求：[PRD R1–R4](../PRD.md)；接口：[sys](../tool/sys.md)；验证：[测试指南](../test/README.md)。R5 自启配置由独立的 [startup](../tool/startup.md) 实现。
 
-## TLDR
+## 目标与边界
 
-`sys`：实时负载 + 传感器检查，辅助维修人员现场定位
-"谁在吃资源"。单工具多 scope，沿用 disk 已验证的模式。
-调用方是模型：一份描述省 token，
-一套返回结构（`data / notice / error`）学一次用全部。
-与 disk 边界一句话：盘上归 disk，运行归 sys。
+sys 提供维修现场的实时负载和传感器数据，回答“谁在消耗资源、哪里可能受限”。遵循只读、零宿主安装、结构化返回的约束。
 
-## 选型
+| 工具 | 职责 |
+|---|---|
+| sys | 当前负载、进程、IO、GPU、可读传感器 |
+| disk | 容量、空间分布和 SMART |
+| startup | 开机启动配置 |
+| driver | 设备识别和驱动状态 |
+| eventlog | 历史故障线索 |
 
-A 单工具多 scope / B 每域一工具 / C 全量快照 → **A**。
+## 接口组织
 
-- 描述常驻系统提示词，B 白烧 5 份
-- C 把最贵路径（双采样、GPU 计数器）绑死在每次调用
-- disk 已验证该模式，模型零学习成本
+选择一个工具、多个 scope，默认 overview。与每个领域注册独立工具相比，它减少重复描述并复用采集设施；与全量快照相比，它避免每次都执行双采样、GPU 和传感器查询。
 
-## 接口
+startup 单独注册：静态启动配置与实时负载的问题不同，也不共享采样过程。top 默认 10、最大 50，仅作用于 proc/gpu/io。
 
-```
-sys({ scope?, top? })
-│
-├─ top?=10   上限 50，仅 proc / gpu / io 生效
-│
-├─ overview    整机负载概况（R4）—— 无 scope 兜底
-│              内存池（驱动泄漏）+ 机型（厂商/型号/CPU/BIOS）
-├─ proc        内存 + CPU% Top N + 可执行路径（R1）
-├─ gpu         每进程 GPU 利用率 + 显存（R2）
-│              独显附温度 / 功耗；
-│              无 NVIDIA 时 LHM 附核显 / 其他卡传感器；
-│              适配器清单（含虚拟显示，计数器偶发失败重试 1 次）
-├─ io          每盘队列 / 吞吐 + 每进程 IO 速率（覆盖面复盘 T1）
-└─ sensor      温度 / 风扇 / 电压（R3；计数器失败透出 counterErrors）
+```mermaid
+flowchart TD
+    A[sys scope] --> B[参数校验与路由]
+    B --> C[对应采集函数]
+    C --> D[便携 pwsh / 可选 nvidia-smi]
+    D --> E[数据与采集错误]
+    E --> F[按 scope 包装返回]
 ```
 
-R5 剥离为独立工具 `startup.ts`：配置盘点与实时负载不同类，
-无共享采集逻辑，塞进 scope 只会让边界变模糊。
+## 数据源与决策
 
-## 架构
+| scope | 方案 | 选择理由 |
+|---|---|---|
+| proc | Get-Process 双采样，按实际间隔和逻辑核数计算 CPU；工作集与路径取快照 | 避开历史实测较慢的 PerfProc 查询；同一进程内采样减少启动成本 |
+| overview | CIM 机型、内存、页面文件、开机时间；格式化 CPU 类预读后再取值 | 类名不依赖系统语言；集中提供整机判断所需背景 |
+| io | Win32_Process 累计 IO 差分 + PerfDisk 格式化类 | 共用实际采样窗口，分别呈现进程活动与物理盘负载 |
+| gpu | GPU Engine、Process Memory、VideoController；并行查询 nvidia-smi | 保留进程利用率、显存和适配器信息；NVIDIA 为可选数据源 |
+| sensor | LHM 用户态 + 热区/频率计数器 | 不为诊断安装内核驱动，使用可获得的温度和限频线索 |
 
-外部缝一条，复杂度全在实现内：
+### GPU 聚合
 
-```
-sys({ scope, top })
-│
-├─ sys.ts   路由 + 参数校验 + 结果包装
-│
-├─ collectProc()      快照 + 双采样
-├─ collectGpu()       计数器聚合 + nvidia-smi
-├─ collectIo()        进程 IO 差分 + 每盘队列
-├─ collectSensor()    LHM + 提权降级
-├─ collectOverview()
-├─ lhmGpuStatus()     无 NVIDIA 时的核显降级路径
-└─ runPwsh / 超时 / 解析   ← 共享设施
-```
-`collectX()` 仅供实现与直连 harness（`_t*.mjs`）测试。
+按进程取最繁忙引擎的利用率，保留适配器和引擎样本，不将并行引擎相加。NVIDIA 返回每卡状态数组，带 uuid/pciBusId；程序不存在或失败时尝试 LHM 补充。
 
-## 采集要点
+GPU 引擎查询失败重试一次；各路计数器分别记录错误，其他成功数据继续返回。GPU 和传感器的性能路径通过 PDH 本地化，不依赖固定英文路径或 Perflib 注册表名称表。
 
-- proc：CPU% 双采样差分；
-  不走 PerfProc 原始表（实测 7.8s）；
-  附 `path`（Get-Process 现成字段，系统进程 / 无权限时为 null）
-- gpu：GPU Engine 按进程聚合（偶发无效采样重试 1 次再收敛 {error}）；
-  Process Memory 取显存；nvidia-smi 存在才附带；
-  无 NVIDIA 时 LHM 只开 GPU 附 `lhmGpu`（原始传感器读数，
-  部分老核显可能为空——语义区别于 nvidia: null，notice 说明）；
-  适配器清单取 Win32_VideoController（<0.1s 并入同命令，
-  bus=PCI/ROOT 供模型区分实体卡与虚拟显示，不硬编码谁是真卡）
-- io：每进程 IO 取 Win32_Process 累计计数双快照差分
-  （避开 PerfProc 慢路径）；每盘取 PerfDisk_PhysicalDisk
-  格式化计数器类双读（类名不本地化）；两路共用同一采样窗口
-- sensor：LHM 0.9.6 用户态（`lhm\`）+ Thermal Zone
-  + 降频计数器，免安装免管理员；
-  CPU 核心温度需内核驱动，零安装约束下用降频信号替代；
-  计数器失败透出 counterErrors（机器可能没有这类计数器，重试无判据）
-- overview：纯快照（CPU 占用率除外，双读差分）；
-  内存池取 PerfOS_Memory 即时值；机型取 ComputerSystem/BIOS/
-  Processor 现成字段，按机型匹配已知问题是品牌机维修第一步
+### 传感器范围
 
-## 边界
+LHM 随发行包提供，只启用所需硬件类别，避免无关依赖初始化。过滤非有限值与明显无效的热区温度，限制传感器数量。热区、频率读取失败直接说明原因，不自动重复尝试所有传感器。
 
-- 盘上归 `disk`（容量 / SMART），运行归 `sys`（负载）；
-  "现在谁在读写"归 sys scope=io（实时吞吐），
-  disk 管"东西占了多少、盘体本身健康吗"
-- `startup` 管"开机拉起什么"（静态配置），
-  `sys` 管"现在什么在吃资源"（实时负载）
-- 磁盘温度归 `sensor`（数据源是传感器，非 SMART）
+不安装 PawnIO，也不采用旧 WinRing0 作为安装方案。核心温度不可读时保留能力限制；频率下降只作线索，不能代替温度测量或直接证明过热。
 
-## 里程碑
+## 错误与输出
 
-- [x] proc —— 2026-09-01，`tests/_t3.mjs`
-- [x] gpu —— 2026-09-01，同上
-- [x] overview + 无 scope 兜底 —— 2026-09-01，`tests/_t7.mjs`
-- [x] sensor + `lhm\` 打包 —— 2026-09-01，`tests/_t3`/`_t6`；
-      UAC 实测确认核心温度需内核驱动，降频信号替代
-- [x] startup 剥离为独立工具 —— 2026-09-01，`tests/_t8.mjs`
-- [x] io —— 2026-09-03，`tests/_t11.mjs`（Todo 覆盖面复盘 T1）
-- [x] gpu 无 NVIDIA 时 LHM 降级（lhmGpu）—— 2026-09-03，同上（T2）
-- [x] proc 附加可执行路径 —— 2026-09-03，同上（T3）
-- [x] gpu 附适配器清单 + 计数器重试 —— 2026-09-03，同上（T4/T6；
-      T6 的 schema 拦截评估结论：pi-ai 报错已含路径/原因/参数回显，不改）
-- [x] overview 内存池 + 机型 —— 2026-09-03，同上（T5/T7）
+公共 PowerShell 包装保留非终止错误为 collectionErrors/degraded；各专用数据源另返回具体错误。失败、无硬件、暂时没有活动是不同状态，输出必须允许调用方区分。
 
-## 待拍板（已全部落定）
+排行受 top 限制，传感器最多 200 项。进程路径、驱动信息、计数器可能缺失，保留 null 和错误，不补造数值。
 
-- [x] `top` 默认 10，上限 50
-- [x] 无 scope 兜底 `overview`
-- [x] `startup` 剥离为独立工具，不进 sys scope
+## 实施记录
+
+| 日期 | 已交付范围 | 当时的局部脚本 |
+|---|---|---|
+| 2026-09-01 | proc、gpu、overview、sensor；startup 独立 | `_t3`、`_t6`、`_t7`、`_t8` |
+| 2026-09-03 | io、GPU 补充传感器/适配器/重试、进程路径、内存池和机型 | `_t11` |
+| 2026-09-05 | 错误保留、GPU 聚合与多卡、本地化路径、LHM 路径安全 | review-fixes |
+
+脚本位于本地忽略目录 tests，不是发行版依赖。历史耗时和环境证据集中在 [测试日志](../test/Testlog.md)，不作为跨机器性能保证。

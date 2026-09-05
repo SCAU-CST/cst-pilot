@@ -1,78 +1,68 @@
-# 自定义工具开发者文档
+# 工具文档
 
-cst-pilot 自定义实现的五个扩展。供维护者阅读：设计背景、实现细节、取舍依据。
+本目录说明六个只读诊断工具的调用方式、返回字段和限制。设计理由见 [design](../design/sys_design.md)，验证方法见 [测试指南](../test/README.md)。
 
-| 文档 | 对应实现 | 一句话 |
+| 要解决的问题 | 工具 | 实现 |
 |---|---|---|
-| [ls.md](ls.md) | `ls.ts` | 目录浏览工具，覆盖 pi 内置 ls |
-| [disk.md](disk.md) | `disk.ts` | 存储分析：空间 / 信息 / 健康 / 占用 |
-| [sys.md](sys.md) | `sys.ts` | 系统检查：整机概况（含机型/内存池）/ 进程 / 磁盘 IO / GPU（含适配器清单）/ 传感器 |
-| [startup.md](startup.md) | `startup.ts` | 开机自启盘点：注册表 / 启动文件夹 / 自启服务（独立工具，非 sys scope） |
-| [eventlog.md](eventlog.md) | `eventlog.ts` + `eventlog-core.ts` | 事件日志痕迹：最近错误/警告 / 开关机·蓝屏 / 崩溃 / 服务 / 磁盘 / 登录审计 / 自定义查询 / 单条原文 |
-| [driver.md](driver.md) | `driver.ts` + `driver-core.ts` | 设备驱动健康：异常设备 / Net·蓝牙·音频·显示现状 / 外设与可移动存储 / 指定设备查询 |
-| [wz-index.md](wz-index.md) | `wz-index.ts` | 跨扩展共享的 WizTree 大小账本（非工具，共享模块） |
+| 目录里谁占空间 | [ls](ls.md) | [ls.ts](../../agent/home/extensions/ls.ts) |
+| 磁盘容量、型号、健康与占用 | [disk](disk.md) | [disk.ts](../../agent/home/extensions/disk.ts) |
+| CPU、内存、GPU、IO 与传感器 | [sys](sys.md) | [sys.ts](../../agent/home/extensions/sys.ts) |
+| 开机会启动什么 | [startup](startup.md) | [startup.ts](../../agent/home/extensions/startup.ts) |
+| 崩溃、蓝屏、服务与登录历史 | [eventlog](eventlog.md) | [eventlog-core.ts](../../agent/home/extensions/eventlog-core.ts) |
+| 设备识别与驱动状态 | [driver](driver.md) | [driver-core.ts](../../agent/home/extensions/driver-core.ts) |
+| 维护共享目录大小缓存 | [wz-index](wz-index.md)（内部模块） | [wz-index.ts](../../agent/home/extensions/wz-index.ts) |
 
-## 共性约定
+## 使用约定
 
-所有自定义实现的工具遵守同一套约定，读单个文档前先看这里。
+- 支持范围为 Windows 10/11 x64；裁剪系统、PE 和特殊介质的可用性需单独验证。
+- 工具不改注册表、设备状态或系统配置。存储扫描会在 `wiztree/tmp` 写入临时 CSV，并在结束时尝试清理；目录大小缓存保存在进程内。
+- 文档中的 `工具名({...})` 是工具调用示意，不是可直接粘贴到 PowerShell 的命令。
+- 多功能工具用 `scope` 选择子功能；`ls`、`startup` 不使用 scope。各工具的必填参数见对应页面。
+- 示例数值仅用于说明字段，不能作为其他机器的通过标准。
 
-### 只读原则
+## 返回结构
 
-- 不写注册表、不改系统配置
-- 唯一写路径：`wiztree\tmp` 下的临时 CSV，用完即删
-- 模型输入只做白名单校验后插值，命令串写死在代码里
+模型读取 `content` 中的 JSON 文本。多数工具同时返回 `details` 供 TUI 渲染；`ls` 只返回文本。需要模型获知的信息必须出现在文本中。
 
-### pwsh 调用模式
+```ts
+{ content: [{ type: "text", text: JSON.stringify(result) }], details: result }
+```
 
-需要 Windows 原生数据的工具统一走 `runPwsh()`：
+业务数据的包装并不完全相同：`sys`、`driver`、`eventlog` 按 scope 包装，`startup` 使用 `startup` 字段；`disk` 按数据种类返回，`ls` 直接返回目录对象。
 
-- 调仓库自带 `pwsh\pwsh.exe`，`-NoProfile -NonInteractive -ExecutionPolicy Bypass`
-- 输出强制 JSON（pwsh 侧 `ConvertTo-Json`），Node 侧 `JSON.parse`
-- stdout/stderr 按 Buffer 接收，UTF-8 严格解码失败回退 GBK（中文系统错误输出是 ANSI 代码页）
-- 超时收敛为 `{ error }`，不抛异常
+| 字段 | 如何理解 |
+|---|---|
+| `notice` / `*Notice` | 数据口径、缺失能力或降级原因 |
+| `error` | 当前查询或数据源失败；可能位于子对象内 |
+| `degraded` / `collectionErrors` | 部分采集失败，成功字段仍可使用 |
+| `counterErrors` / `smartErrors` | 对应数据源的具体错误 |
+| `null` / 空数组 | 结合错误字段判断；不能一律解释为正常、无设备或零用量 |
 
-### 返回结构
+## pwsh 调用模式
 
-`{ content: [{ type: "text", text: JSON.stringify(result) }], details: result }`。
-result 内约定三个键：`data` 本体、`notice` 降级/附注说明、`error` 失败原因。
-模型学会一次，所有工具通用。
+Windows 原生数据通过仓库自带的 `pwsh/pwsh.exe` 采集，使用 `-NoProfile -NonInteractive -ExecutionPolicy Bypass`。命令输出 JSON，Node 负责解析；文本优先按 UTF-8 解码，失败时回退 GBK。超时或解析失败返回结构化错误。
 
-### scope：一个工具，多个子功能
+输入先做类型、范围或白名单校验。动态字符串由 [pwsh-data.ts](../../agent/home/extensions/pwsh-data.ts) 编码为数据表达式，避免引号进入脚本语法。sys、driver、startup 通过公共包装保留 PowerShell 非终止错误；eventlog 另按异常类型和错误 ID 分类。
 
-自定义实现的多功能工具对外只注册一个工具名（如 `disk`、`sys`），内部的
-子功能用 `scope` 参数区分：调用时传 `scope="usage"` 就是查占用排行，
-传 `scope="health"` 就是查 SMART。它相当于同一个工具里的子命令。
+## 提示词
 
-scope 适合**同质子功能的聚合**（都是实时负载/存储采集，共享采集设施）。
-性质不同的能力应独立注册：`startup`（配置盘点）原本规划为 sys 的
-`startup` scope，落地前剥离为独立工具——它与实时负载不属一类问题，
-无共享采集逻辑，塞进 scope 只会让 sys 描述变长、边界变模糊
-（决策记录见 sys_design.md 待拍板）。
+| 注册字段 | 用途 |
+|---|---|
+| `description` / 参数 schema | 向模型解释工具和参数 |
+| `promptSnippet` | 加入系统提示词的工具列表 |
+| `promptGuidelines` | 提供工具选择和使用规则 |
+| `label` | 仅用于 TUI 显示 |
 
-这样做的收益：工具描述只占一份上下文，模型学会一次就能用全部子功能；
-子功能之间共享 pwsh 调用、超时、降级等基础设施。
+覆盖内置工具时必须自带 `promptSnippet`，否则可能从工具提示列表中消失。`ls` 使用同名注册覆盖内置版本。
 
-### 提示词
+## 维护
 
-两个容易踩的坑：
+`agent/home/extensions` 下的 TypeScript 文件由 pi 加载，默认导出函数负责注册工具。共享模块提供空默认导出，避免被当成无效扩展。跨扩展缓存使用进程级单例，见 [wz-index](wz-index.md)。
 
-- **覆盖内置工具会顶掉内置 snippet**：自定义 `ls` 覆盖内置后，
-  若不写自己的 `promptSnippet`，`ls` 会从 `Available tools:` 列表消失
-  （初版曾中招，已修）。列表只收 snippet 非空的工具。
-- **`label` 只用于 TUI 显示，不进任何提示词**。
+格式与检查规则以根目录 [biome.json](../../biome.json) 为准：
 
-另外，模型看到的**工具结果** = 返回值 `content[0].text`（JSON 字符串）；
-`details` 只用于 TUI 渲染，不进模型上下文。
+```sh
+npx @biomejs/biome@2.3.5 check agent/home/extensions
+```
 
-### 注册机制
-
-`extensions\` 下的 `.ts` 由 pi 自动加载，default export 接收 `pi`，调 `pi.registerTool()` 注册。
-共享模块（如 wz-index.ts、eventlog-core.ts）提供一个空 factory 让加载器安静。
-同名注册覆盖内置工具（ls 即用此机制）。
-
-### 代码风格
-
-biome 统一检查（配置在仓库根 `biome.json`，沿用 pi 上游标准：schema 2.3.5，
-tab 缩进、行宽 120、recommended lint；`noExplicitAny` / `noControlCharactersInRegex`
-等按扩展场景关闭）。运行：`npx @biomejs/biome@2.3.5 check agent/home/extensions`。
-改动扩展后跑直连 harness（`tests/_t*.mjs`）确认行为无回归。
+修改行为时同步参数、字段和降级说明，并按 [测试指南](../test/README.md) 选择必要的局部验证。`tests/` 下的开发脚本不随 Git 分发。

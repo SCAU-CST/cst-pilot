@@ -1,122 +1,78 @@
-# driver — 设备驱动排查工具
+# driver：设备与驱动状态
 
-实现：`agent\home\extensions\driver.ts`（注册薄壳）+ `driver-core.ts`（全部逻辑，零 npm 依赖）。
-设计见 `doc\design\driver_design.md`，需求见 `doc\PRD.md`（R7）。
+查看设备是否被识别、驱动状态是否异常，以及蓝牙、音频等服务是否运行。负载和温度使用 [sys](sys.md)，容量和 SMART 使用 [disk](disk.md)。
 
-## 背景
+实现：[driver.ts](../../agent/home/extensions/driver.ts) 与 [driver-core.ts](../../agent/home/extensions/driver-core.ts)；设计见 [driver 设计](../design/driver_design.md)。
 
-排查蓝牙、网卡、声卡的驱动有没有出问题、出在哪个设备上，以及外接设备
-（U盘、打印机、无线键鼠）认没认出来。数据全部来自系统自带 WMI/CIM，
-Win10 / Win11 通用，免管理员、免安装。
+## 调用
 
-与 sys 的边界：sys 管负载（设备活着但忙），driver 管健康（设备活着吗、
-驱动对不对）。与 disk 的边界：盘上容量归 disk，设备和驱动归 driver。
-
-## 调用方式
-
-| 参数 | 适用 scope | 说明 |
-|---|---|---|
-| `scope` | 全部 | `problem`（默认）/ `core` / `external` / `find` |
-| `name` | find | 设备名称子串 |
-| `class` | find | 设备类精确名（固定英文类名，如 `Net`、`MEDIA`、`Bluetooth`） |
-| `id` | find | 硬件 ID / DeviceID 子串（如 `VID_045E`） |
-
-find 三条件至少传一个，AND 组合；不传 scope 默认 `problem`。
-
-## 返回结构
-
-约定同全部自定义工具：`result[scope]` 为 payload，正常返回数据字段 +
-`notice`，失败收敛 `{ error }`。
-
-### problem / find：devices
-
-```jsonc
-{
-  "devices": [
-    {
-      "name": "设备名（随驱动可能是任意语言，只透传）",
-      "class": "PNPClass（固定英文类名，个别设备为 null）",
-      "status": "Error / Unknown / OK",
-      "errorCode": 28,                      // ConfigManagerErrorCode 原始值，不翻译
-      "deviceId": "USB\\VID_1234&PID_5678\\...",
-      "hardwareIds": ["USB\\VID_1234&PID_5678&REV_0100", "..."]
-    }
-  ],
-  "count": 1,
-  "notice": "errorCode 为 ConfigManagerErrorCode 原始值（0 = 正常）...盲区..."
-}
+```js
+driver({})
+driver({ scope: "core" })
+driver({ scope: "external" })
+driver({ scope: "find", class: "Net", name: "Realtek" })
+driver({ scope: "find", id: "VID_045E" })
 ```
 
-- problem 只取 `Status="Error" OR Status="Unknown"`——不用
-  `ConfigManagerErrorCode != 0` 过滤，后者会漏 errorCode=0 的幽灵异常设备
-  （指纹识别器有先例）
-- find 条件 AND 组合；`id` 先下推 `DeviceID LIKE`（LIKE 通配符 `%` `_` `[`
-  `\` 全部转义为字面量，反斜杠不转义会静默失配返回 0），再在 Node 侧对
-  deviceId 与 hardwareIds 双通道后置匹配（忽略大小写）——HardwareID 是
-  字符串数组，无法下推
-- 错误码不做翻译，人话解读与处置建议由模型联网查官方文档
+| 参数 | 适用范围 | 说明 |
+|---|---|---|
+| `scope` | 全部 | `problem`（默认）、`core`、`external`、`find` |
+| `name` | find | 名称的字面子串，不区分大小写 |
+| `class` | find | 固定设备类精确匹配，如 Net、MEDIA、Bluetooth |
+| `id` | find | DeviceID 或任一 HardwareID 的字面子串，不区分大小写 |
 
-### core：四类硬件现状
+find 至少传一个条件，多个条件按 AND 组合。名称和 ID 不支持正则或通配符。
 
-| 字段 | 内容 |
+## 返回
+
+结果按 scope 包装，例如 `{ "problem": { "devices": [], "count": 0, "notice": "..." } }`。部分采集失败时保留 `collectionErrors` 和 `degraded`，不能将此时的空数组解释为没有异常。
+
+### problem 与 find
+
+`devices[]` 每项包含：
+
+| 字段 | 含义 |
 |---|---|
-| `net[]` | `name` / `connId`（网络连接面板名）/ `physical`（布尔标志，可能误报）/ `connStatus`（NetConnectionStatus 原始值） |
-| `bluetooth[]` / `audio[]` | `name` / `status` / `errorCode`（PnP 设备级） |
-| `display[]` | `name` / `vendor`（AdapterCompatibility）/ `driver` / `status` / `bus`（PNPDeviceID 首段，PCI / ROOT） |
-| `services[]` | `bthserv` / `Audiosrv` 的 `state`（缺失 = 无该服务，合法数据） |
-| `drivers[]` | `class`（NET/MEDIA/BLUETOOTH/DISPLAY）/ `device` / `version` / `date`（yyyy-MM-dd）/ `provider` |
+| `name` / `class` | 设备名与 PNPClass；可能缺失 |
+| `status` | PnP 原始状态 |
+| `errorCode` | ConfigManagerErrorCode 原始值 |
+| `deviceId` | 设备实例 ID |
+| `hardwareIds` | 硬件 ID 数组；用于匹配设备型号 |
 
-- Net 只取 `NetConnectionID IS NOT NULL`（网络连接面板真实条目，结构性
-  过滤；不加过滤带出几十条 legacy 伪适配器）。虚拟网卡不剔除——
-  「虚拟网卡干扰」的判断前提是模型能看到虚拟网卡
-- drivers 表按 DeviceClass 四类过滤，非全量；驱动是否过旧由模型联网
-  比对最新版，工具不判断
+problem 查询 `Status=Error/Unknown`，不是所有非零错误码的全集。find 则返回符合条件的设备，不限异常状态。错误码保留原值，工具不内置驱动版本或错误处置对照表。
 
-### external：外置设备 + 可移动存储
+### core
 
-- `devices[]`：同 problem 的设备行，来源为 DeviceID 前缀白名单
-  `USB\` / `BTHENUM\`（蓝牙外设）/ `DISPLAY\`（显示器；`USB%` LIKE
-  天然连带 `USBSTOR\`，U 盘存储节点，属预期覆盖）
-- `removable[]`：`model` / `interface` / `mediaType` / `sizeGB`，
-  来自 `Win32_DiskDrive`（`InterfaceType='USB' OR MediaType LIKE 'Removable%'`），
-  SD 卡在其中
-- 内置 USB 设备（自带摄像头）与内置屏同前缀，一并如实返回，由模型区分
+| 字段 | 主要内容 |
+|---|---|
+| `net[]` | name、connId、physical、connStatus；保留虚拟网卡 |
+| `bluetooth[]` / `audio[]` | name、status、errorCode |
+| `display[]` | name、vendor、driver、status、bus |
+| `services[]` | bthserv、Audiosrv 的状态 |
+| `drivers[]` | class、device、version、date、provider |
 
-## 已知盲区（notice 如实告知）
+网卡只取有 `NetConnectionID` 的条目，避免旧式伪适配器干扰。`physical` 可能由驱动误报，不能单独用来区分实体和虚拟网卡。驱动日期格式为 `yyyy-MM-dd`，仅按 Net、Bluetooth、MEDIA、Display 四类查询签名驱动。
 
-飞行模式 / 射频开关状态 WMI 读不到；网络打印机不走 PnP 枚举。
-设备全正常但功能异常时，先排查这两处。
+服务缺失只有在采集成功时才可解释为无该服务。驱动版本是否过旧须另行核对，工具只报告版本和日期。
 
-## 实测（2026-09-03，pwsh 7.6.5，i5-12600KF / Win11 / RTX 5070 Ti）
+### external
 
-- 耗时：problem 0.9s / core 4.9s / external 1.0s / find 约 1s；
-  WMI 冷启动约 10s（同 sys overview），首查慢后续热
-- 本机量：problem 0（健康机空数组合法）/ net 10（过滤前 24）/
-  bluetooth 17 / audio 8 / display 2 / drivers 49 行 /
-  external 48 外设 + 1 可移动存储 / find：class=Net 22、
-  name=Realtek 5、id=VID_ 31
+- `devices[]`：DeviceID 以 USB、BTHENUM、DISPLAY 开头的设备；USB 筛选也覆盖 USBSTOR。
+- `removable[]`：model、interface、mediaType、sizeGB，来自 USB 或可移动类型的 `Win32_DiskDrive` 记录。
 
-## 实测排除的坑
+内置摄像头和内置屏也可能在列表中。SD 卡是否出现取决于读卡器的枚举方式，不能仅凭列表名称认定它是外接设备。
 
-- **find 的引号嵌套**：WQL 字符串字面量必须用双引号（外层 `-Filter '...'`
-  单引号包裹）。内层单引号会把外层提前闭合、过滤条件被静默拆散——
-  SilentlyContinue 下不报错，只表现为命中量异常（首版 class=Net
-  "命中 1" 实为语义已错，全量应为 22）
-- find 的 id 下推到 `DeviceID LIKE`：LIKE 模式内 `%` `_` `[` `\` 全部
-  转义为字符组（`%`→`[%]` 等；`\` 是 WQL LIKE 转义前缀，不转义则
-  `PCI\VEN_8086` 静默失配返回 0），`hardwareIds` 是字符串数组无法下推，
-  由 Node 侧后置双通道匹配
-- `USB\` 前缀 LIKE 天然连带 `USBSTOR\`（U 盘存储节点）——外设排查
-  正需要它，不视为白名单泄漏
-- `PhysicalAdapter` 在部分机器无区分度（本机 VMware / Wintun 虚拟网卡
-  也返回 True）——只作展示标志不用于剔除，误标不致命
-- `Win32_PnPSignedDriver` 的 `DriverDate` 经 Get-CimInstance 已自动转
-  DateTime，`ToString('yyyy-MM-dd')` 直接可用，无需手工解析 DMTF
+## 排查顺序
 
-## 边界
+| 症状 | 建议入口 | 继续核查 |
+|---|---|---|
+| 蓝牙消失、无声音 | problem → core | 对应设备状态与 bthserv/Audiosrv |
+| 无法联网 | core | 网卡连接状态、虚拟网卡；IP 和连通性另查 |
+| 外设未识别 | external | 用 find 按名称、VID/PID 或硬件 ID 复查 |
+| 触控板、指纹等特定设备异常 | find | 设备 ID、错误码与驱动版本 |
 
-- 只读盘点。不装驱动、不启用禁用设备、不改服务。安装动作由模型给出
-  指引（下载 + `pnputil /add-driver`），用户确认后执行，不进 tool
-- 驱动版本基线不写死，是否过旧由模型联网比对（硬编码黑白名单会误判）
-- `pnputil /enum-drivers`（驱动仓库全量清单）暂不做，需要时后补
-  scope=store
+## 限制
+
+数据来自当前系统 WMI/CIM，通常无需管理员。裁剪系统、WMI 故障和缺失字段应通过错误或空值如实呈现；不能保证每种 Windows 10/11 镜像均可采集。
+
+工具不覆盖飞行模式、射频开关、网络打印机、IP 配置、信号强度或网络连通性，也不枚举完整驱动仓库。它不会安装、回滚驱动，启用设备或修改服务。

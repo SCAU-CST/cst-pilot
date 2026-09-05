@@ -59,4 +59,4 @@ NTFS → `wiztree-mft`，否则 → `wiztree-walk`，否则 FAT32 卷上会冒�
 2. `runPwsh()` 是 JSON 通道：裸字符串输出会过不了 `JSON.parse` 被当错误吞掉，
    兜底查询必须包 `ConvertTo-Json`。
 3. 便携 pwsh 从 U 盘冷 spawn 很慢，15s 超时会被掩——兜底查询超时给到 60s
-   （结果按盘符缓存，每会话每卷只探测一次）。
+   （结果按卷身份缓存，每次复用前校验卷身份，换盘或无法确认身份时丢弃缓存）。
