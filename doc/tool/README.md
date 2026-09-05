@@ -80,4 +80,4 @@ npm run check
 # 仅类型检查：npm run typecheck
 ```
 
-开发依赖锁定 Biome 2.3.5、TypeScript 5.9.3；首次准备开发环境可在 agent 目录执行 `npm install --ignore-scripts`。typebox 和 pi-ai 由 pi 的扩展加载器提供，tsconfig paths 对应当前安装包的类型位置。检查命令不运行测试或诊断工具；`tests/` 保持忽略，不属于本轮工程整理范围。修改输出语义时同步工具说明。
+开发依赖锁定 Biome 2.3.5、TypeScript 5.9.3；首次准备开发环境可在 agent 目录执行 `npm install --ignore-scripts`。typebox 和 pi-ai 由 pi 的扩展加载器提供，tsconfig paths 对应当前安装包的类型位置。检查命令不运行诊断工具。修改输出语义时同步工具说明。
