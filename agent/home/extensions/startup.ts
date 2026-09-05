@@ -19,6 +19,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { Type } from "typebox";
+import { collectionNotice, diagnosticCommand } from "./pwsh-data";
 
 const execFileP = promisify(execFile);
 
@@ -52,7 +53,7 @@ async function runPwsh(command: string, timeoutMs = 20000): Promise<any> {
 	try {
 		const r = await execFileP(
 			PWSH,
-			["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", command],
+			["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", diagnosticCommand(command)],
 			{ timeout: timeoutMs, windowsHide: true, encoding: "buffer", maxBuffer: 16 * 1024 * 1024 },
 		);
 		const stdout = decodeBuffer(r.stdout as Buffer);
@@ -94,7 +95,7 @@ foreach ($k in @(
   foreach ($n in $it.GetValueNames()) {
     $v = $it.GetValue($n)
     if ($null -ne $v) {
-      $reg += [pscustomobject]@{ source = $k -replace '^HKLM:\\\\', 'HKLM\\' -replace '^HKCU:\\\\', 'HKCU\\'; name = $n; command = [string]$v }
+      $reg += [pscustomobject]@{ source = $k -replace '^HKLM:\\\\', 'HKLM\\' -replace '^HKCU:\\\\', 'HKCU\\'; name = $n; command = [string]$v; approval = if ($k.EndsWith("RunOnce")) { $null } else { ($k -split ":")[0] + "/" + $(if ($k.Contains("Wow6432Node")) { "Run32" } else { "Run" }) + "/" + $n } }
     }
   }
 }
@@ -113,10 +114,13 @@ foreach ($sap in @(
   $it = Get-Item -Path $sap
   foreach ($n in $it.GetValueNames()) {
     $b = $it.GetValue($n, $null) -as [byte[]]
-    if ($b -and $b.Length -gt 0) { $dis[$n] = (($b[0] % 2) -eq 1) }
+    if ($b -and $b.Length -gt 0) { $dis[(($sap -split ":")[0] + "/" + ($sap -split "\\\\")[-1] + "/" + $n)] = (($b[0] % 2) -eq 1) }
   }
 }
-$reg = @($reg | ForEach-Object { $_ | Add-Member -NotePropertyName disabled -NotePropertyValue $dis[$_.name] -PassThru })
+$reg = @($reg | ForEach-Object {
+  $disabled = if ($_.approval) { $dis[$_.approval] } else { $null }
+  [pscustomobject]@{ source = $_.source; name = $_.name; command = $_.command; disabled = $disabled }
+})
 
 # 3) 启动文件夹（当前用户 + 所有用户）
 $folders = @()
@@ -124,7 +128,8 @@ foreach ($f in @(@('user', [Environment]::GetFolderPath('Startup')), @('allUsers
   $p = $f[1]
   if (-not $p -or -not (Test-Path -LiteralPath $p)) { continue }
   $items = @(Get-ChildItem -LiteralPath $p -File | ForEach-Object {
-    $d = $dis[$_.Name]; if ($null -eq $d) { $d = $dis[$_.BaseName] }
+    $hive = if ($f[0] -eq "user") { "HKCU" } else { "HKLM" }
+    $d = $dis[$hive + "/StartupFolder/" + $_.Name]
     [pscustomobject]@{ name = $_.Name; disabled = $d }
   })
   $folders += [pscustomobject]@{ scope = $f[0]; path = $p; items = $items }
@@ -149,6 +154,7 @@ async function collectStartup(): Promise<any> {
 	return {
 		...r,
 		notice:
+			collectionNotice(r) +
 			`开机自启盘点（只读）。regItems=注册表 Run/RunOnce 自启项（source=所在键，含 Wow6432Node；` +
 			`disabled=true 表示已在任务管理器禁用、不会开机拉起，共 ${disabledCount} 项）；` +
 			`startupFolders=启动文件夹（user=当前用户，allUsers=所有用户）；` +

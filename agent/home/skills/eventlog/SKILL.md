@@ -24,7 +24,7 @@ description: eventlog 工具的参数与返回字段说明。八个 scope 的查
 
 1. `recent`：System + Application 通道的 warn/error 汇总，开场查询
 2. `boot`：`kind=all`（默认）查官方重启排查清单（启停标记 12/13/6005/6006/6009、意外重启 41/6008、蓝屏 1001、重启原因 1074/19/7045）∪ WHEA-Logger 硬件错误；`kind=unexpected` 只查 41/6008；`kind=bluescreen` 查 1001 + WHEA-Logger。ID 19 可能来自 WindowsUpdateClient 或 WHEA-Logger，以 `provider` 字段区分
-3. `crash`：Application 通道 1000（应用崩溃，消息含故障模块名）/ 1001（WER 报告）/ 1002（无响应）/ 1026（.NET Runtime）——这四个只认 Error 级（部分服务以 Information 级复用 1000 记普通日志，已硬滤）/ 33·35（SideBySide 并行配置，不限级别）；`app` 按程序名/模块名对消息做子串过滤。命中但 provider 非典型崩溃来源（如第三方复用 ID）的事件标 `atypical: true`，请人工判读
+3. `crash`：Application 通道按提供程序与 ID 配对：Application Error 1000 / .NET Runtime 1026 限 Error；Windows Error Reporting 1001 / Application Hang 1002 / SideBySide 33·35 不限级别，避免漏掉 Information 级 WER 报告。`app` 对全部分组按消息子串过滤。
 4. `service`：System 通道 SCM 白名单 18 个 Error 级 ID（启动失败 / 挂起超时 / 意外终止 / 依赖失败等）；7045（新服务安装，Information 级）保留在白名单；`name` 按服务名子串过滤
 5. `disk`：System 通道 7/11/51（坏块/控制器/分页错误）、129/153（IO 超时重试）、55/98/50/140（NTFS 损坏/写失败）、157（掉盘）
 6. `security`：Security 通道 4624（成功登录）/ 4625（登录失败）/ 4740（账户锁定）；`type` 可选 all / logonFail / lockout。非管理员时**不执行查询**，返回 `admin:false` + `degraded:true` + notice；仅覆盖本地/工作组，域环境 Kerberos 失败（4771）不在范围

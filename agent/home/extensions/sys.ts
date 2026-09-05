@@ -31,6 +31,7 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { StringEnum } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
+import { COUNTER_HELPERS, collectionNotice, diagnosticCommand, psString } from "./pwsh-data";
 
 const execFileP = promisify(execFile);
 
@@ -66,7 +67,7 @@ async function runPwsh(command: string, timeoutMs = 20000): Promise<any> {
 	try {
 		const r = await execFileP(
 			PWSH,
-			["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", command],
+			["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", diagnosticCommand(command)],
 			{ timeout: timeoutMs, windowsHide: true, encoding: "buffer", maxBuffer: 16 * 1024 * 1024 },
 		);
 		const stdout = decodeBuffer(r.stdout as Buffer);
@@ -121,7 +122,7 @@ async function collectProc(topN: number): Promise<any> {
 	if (r && typeof r.error === "string") return { error: r.error };
 	return {
 		...r,
-		notice: `进程 ${r.totalProcs} 个，采样间隔 ${r.intervalSec}s（${r.cores} 逻辑核）。byCpu=CPU 占用率 Top N；byMem=内存（工作集）Top N。cpuPct 为采样窗口内的平均值，瞬时突发可能低估。path=可执行文件路径（系统进程或权限不足时为 null，可用于就地验证进程身份）。`,
+		notice: `${collectionNotice(r)}进程 ${r.totalProcs} 个，采样间隔 ${r.intervalSec}s（${r.cores} 逻辑核）。byCpu=CPU 占用率 Top N；byMem=内存（工作集）Top N。cpuPct 为采样窗口内的平均值，瞬时突发可能低估。path=可执行文件路径（系统进程或权限不足时为 null，可用于就地验证进程身份）。`,
 	};
 }
 
@@ -131,14 +132,15 @@ async function collectProc(topN: number): Promise<any> {
 
 const GPU_CMD = (topN: number) => `
 $ErrorActionPreference = 'SilentlyContinue'
+${COUNTER_HELPERS}
 $topN = ${topN}
+$engErr = $null; $memErr = $null
 try {
-  $eng = (Get-Counter '\\GPU Engine(*)\\Utilization Percentage' -ErrorAction Stop).CounterSamples
+  $eng = (Get-DiagnosticCounter 'GPU Engine' 'Utilization Percentage').CounterSamples
 } catch {
-  ConvertTo-Json @{ error = ('GPU 计数器不可用: ' + ($_.Exception.Message)) } -Depth 2
-  exit
+  $eng = @(); $engErr = $_.Exception.Message
 }
-$mem = (Get-Counter '\\GPU Process Memory(*)\\Dedicated Usage').CounterSamples
+try { $mem = (Get-DiagnosticCounter 'GPU Process Memory' 'Dedicated Usage').CounterSamples } catch { $mem = @(); $memErr = $_.Exception.Message }
 
 # 显卡适配器清单（Win32_VideoController 实测 <0.1s）：
 # bus=PCI 为实体卡插槽设备，ROOT 多为虚拟显示适配器，
@@ -170,7 +172,10 @@ $flat = @($eng | ForEach-Object {
   if ($_.InstanceName -match 'pid_(\\d+)') {
     $p = [int]$Matches[1]
     $et = if ($_.InstanceName -match 'engtype_([A-Za-z0-9]+)') { $Matches[1] } else { 'unknown' }
-    [pscustomobject]@{ pid = $p; et = $et; val = $_.CookedValue }
+    $adapter = if ($_.InstanceName -match 'luid_(.+?)_phys_(\\d+)') { $Matches[0] } else { 'unknown' }
+    if (-not [double]::IsNaN($_.CookedValue) -and -not [double]::IsInfinity($_.CookedValue)) {
+      [pscustomobject]@{ pid = $p; adapter = $adapter; et = $et; val = [math]::Max(0, [math]::Min(100, $_.CookedValue)) }
+    }
   }
 })
 
@@ -178,8 +183,9 @@ $byPct = @($flat | Group-Object pid | ForEach-Object {
   [pscustomobject]@{
     pid      = [int]$_.Name
     name     = $nameOf[[int]$_.Name]
-    gpuPct   = [math]::Round(($_.Group | Measure-Object val -Sum).Sum, 1)
+    gpuPct   = [math]::Round(($_.Group | Measure-Object val -Maximum).Maximum, 1)
     engtypes = (($_.Group.et | Sort-Object -Unique) -join '+')
+    engines = @($_.Group | ForEach-Object { [pscustomobject]@{ adapter = $_.adapter; type = $_.et; gpuPct = [math]::Round($_.val, 1) } })
   }
 } | Sort-Object gpuPct -Descending | Select-Object -First $topN)
 
@@ -195,7 +201,7 @@ $byMem = @($mem | Where-Object { $_.CookedValue -gt 1MB } | ForEach-Object {
   }
 } | Sort-Object dedicatedMB -Descending | Select-Object -First $topN)
 
-ConvertTo-Json @{ engineSamples = @($eng).Count; adapters = $ad; byGpuPct = $byPct; byDedicatedMB = $byMem } -Depth 4
+ConvertTo-Json @{ engineSamples = @($eng).Count; adapters = $ad; byGpuPct = $byPct; byDedicatedMB = $byMem; counterErrors = @{ engine = $engErr; memory = $memErr } } -Depth 6
 `;
 
 /** nvidia-smi 系统驱动自带：存在则附带显卡状态，不存在返回 null */
@@ -205,22 +211,38 @@ async function nvidiaStatus(): Promise<any> {
 		const r = await execFileP(
 			NVIDIA_SMI,
 			[
-				"--query-gpu=name,temperature.gpu,power.draw,memory.used,memory.total,utilization.gpu,driver_version",
+				"--query-gpu=uuid,pci.bus_id,name,temperature.gpu,power.draw,memory.used,memory.total,utilization.gpu,driver_version",
 				"--format=csv,noheader,nounits",
 			],
 			{ timeout: 8000, windowsHide: true, encoding: "utf8" },
 		);
-		const line = r.stdout.trim().split(/\r?\n/)[0];
-		const [name, temp, power, memUsed, memTotal, util, driver] = line.split(",").map((s) => s.trim());
-		return {
-			name,
-			tempC: +temp,
-			powerW: +power,
-			vramUsedMB: +memUsed,
-			vramTotalMB: +memTotal,
-			utilPct: +util,
-			driver,
+		const number = (value: string): number | null => {
+			const n = Number(value);
+			return value && Number.isFinite(n) ? n : null;
 		};
+		const rows = r.stdout
+			.trim()
+			.split(/\r?\n/)
+			.filter(Boolean)
+			.map((line) => {
+				const [uuid, pciBusId, name, temp, power, memUsed, memTotal, util, driver] = line
+					.split(",")
+					.map((x) => x.trim());
+				if (!driver) throw new Error("nvidia-smi 返回格式异常");
+				return {
+					uuid,
+					pciBusId,
+					name,
+					tempC: number(temp),
+					powerW: number(power),
+					vramUsedMB: number(memUsed),
+					vramTotalMB: number(memTotal),
+					utilPct: number(util),
+					driver,
+				};
+			});
+		if (!rows.length) return { error: "nvidia-smi 未返回显卡" };
+		return rows;
 	} catch {
 		return { error: "nvidia-smi 调用失败" };
 	}
@@ -231,7 +253,7 @@ async function nvidiaStatus(): Promise<any> {
  *  语义区别于 nvidia: null（"未检出 NVIDIA 独显"），由 notice 说明。 */
 const LHM_GPU_CMD = `
 $ErrorActionPreference = 'Stop'
-try { Add-Type -Path '${LHM_DLL}' } catch { ConvertTo-Json @{ error = ('LHM DLL 加载失败: ' + $_.Exception.Message) } -Depth 2; exit }
+try { Add-Type -Path ${psString(LHM_DLL)} } catch { ConvertTo-Json @{ error = ('LHM DLL 加载失败: ' + $_.Exception.Message) } -Depth 2; exit }
 $c = New-Object LibreHardwareMonitor.Hardware.Computer
 $c.IsCpuEnabled = $false
 $c.IsGpuEnabled = $true
@@ -268,7 +290,8 @@ ConvertTo-Json @{ hardware = $hwSeen; sensors = $sensors } -Depth 3
 async function lhmGpuStatus(): Promise<any> {
 	if (!existsSync(LHM_DLL)) return { hardware: [], sensors: [], notice: "LHM DLL 缺失，GPU 传感器不可读" };
 	const r = await runPwsh(LHM_GPU_CMD, 20000);
-	if (r && typeof r.error === "string") return { hardware: [], sensors: [], notice: `LHM 读取失败: ${r.error}` };
+	if (r && typeof r.error === "string")
+		return { hardware: [], sensors: [], notice: `${collectionNotice(r)}LHM 读取失败: ${r.error}` };
 	return { hardware: Array.isArray(r.hardware) ? r.hardware : [], sensors: Array.isArray(r.sensors) ? r.sensors : [] };
 }
 
@@ -276,16 +299,19 @@ async function collectGpu(topN: number): Promise<any> {
 	// GPU Engine 计数器偶发无效采样（实测观察到过）：失败重试 1 次再收敛为 {error}。
 	// 重试会重跑 GPU_CMD（适配器清单随重跑更新）；nvidia-smi 只在首次调用，结果复用。
 	const [first, nv] = await Promise.all([runPwsh(GPU_CMD(topN)), nvidiaStatus()]);
-	const r = first && typeof first.error === "string" ? await runPwsh(GPU_CMD(topN)) : first;
-	if (r && typeof r.error === "string") return { error: r.error };
+	const r = first?.error || first?.counterErrors?.engine ? await runPwsh(GPU_CMD(topN)) : first;
 	const out: any = { ...r, nvidia: nv };
-	if (!nv) out.lhmGpu = await lhmGpuStatus();
+	if (!nv || nv.error) out.lhmGpu = await lhmGpuStatus();
+	if (r?.error || r?.counterErrors?.engine || r?.counterErrors?.memory || nv?.error) out.degraded = true;
 	out.notice =
-		`GPU Engine ${r.engineSamples} 个实例按进程聚合。byGpuPct=GPU 利用率 Top N（engtypes=所用引擎类型，如 3d/copy/videodecode）；byDedicatedMB=专用显存 Top N；adapters=显卡适配器清单（bus=PCI 为实体卡插槽设备，ROOT 多为虚拟显示适配器；真实显卡以 vendor 为硬件厂商的那条为准）；` +
-		(nv
-			? `nvidia=NVIDIA 独显状态。`
-			: `nvidia=null=未检出 NVIDIA 独显（nvidia-smi 不存在），核显 / 其他卡状态见 lhmGpu（LHM 用户态原始传感器读数；lhmGpu.hardware 为空=本机无可读 GPU 传感器，不代表没有显卡）。`) +
-		`gpuPct 为瞬时采样，可与 proc 的 cpuPct 交叉印证。`;
+		collectionNotice(out) +
+		`GPU Engine ${r.engineSamples ?? 0} 个实例按进程聚合。byGpuPct=GPU 利用率 Top N（engtypes=所用引擎类型，如 3d/copy/videodecode）；byDedicatedMB=专用显存 Top N；adapters=显卡适配器清单（bus=PCI 为实体卡插槽设备，ROOT 多为虚拟显示适配器；真实显卡以 vendor 为硬件厂商的那条为准）；` +
+		(Array.isArray(nv)
+			? `nvidia=NVIDIA 显卡状态数组，按 uuid/pciBusId 区分每张卡。`
+			: nv?.error
+				? `nvidia.error=NVIDIA 状态采集失败，传感器补充见 lhmGpu。`
+				: `nvidia=null=nvidia-smi 不存在；GPU 传感器见 lhmGpu，hardware 为空不代表没有显卡。`) +
+		`gpuPct 为该进程跨适配器最繁忙引擎的利用率，不累加并行引擎；engines 保留各适配器/引擎的样本。计数器或数据源失败见 counterErrors/error，其他结果仍可用。`;
 	return out;
 }
 
@@ -340,7 +366,7 @@ async function collectIo(topN: number): Promise<any> {
 	if (r && typeof r.error === "string") return { error: r.error };
 	return {
 		...r,
-		notice: `disks=每物理盘实时 IO（busyPct=磁盘忙碌百分比，持续 >80 或 queueLen 持续 >1 = IO 瓶颈；readKBs/writeKBs=读写吞吐）；byIo=每进程读+写 IO 速率 Top N（${r.intervalSec}s 差分，仅列有活动的进程，瞬时空闲可能无条目）。与 disk 的分工：disk 管容量与硬件健康，io 管"现在谁在读写"。`,
+		notice: `${collectionNotice(r)}disks=每物理盘实时 IO（busyPct=磁盘忙碌百分比，持续 >80 或 queueLen 持续 >1 = IO 瓶颈；readKBs/writeKBs=读写吞吐）；byIo=每进程读+写 IO 速率 Top N（${r.intervalSec}s 差分，仅列有活动的进程，瞬时空闲可能无条目）。与 disk 的分工：disk 管容量与硬件健康，io 管"现在谁在读写"。`,
 	};
 }
 
@@ -358,10 +384,11 @@ async function collectIo(topN: number): Promise<any> {
 // 3) 降频：% of Maximum Frequency 各核当前频率占最大频率百分比。
 //    低值 + 高负载 = 过热/功耗降频的直接信号。
 const SENSOR_CMD = `
+${COUNTER_HELPERS}
 $ErrorActionPreference = 'Stop'
 $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 $pawnio = Test-Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Services\\PawnIO'
-try { Add-Type -Path '${LHM_DLL}' } catch { ConvertTo-Json @{ error = ('LHM DLL 加载失败: ' + $_.Exception.Message) } -Depth 2; exit }
+try { Add-Type -Path ${psString(LHM_DLL)} } catch { ConvertTo-Json @{ error = ('LHM DLL 加载失败: ' + $_.Exception.Message) } -Depth 2; exit }
 $c = New-Object LibreHardwareMonitor.Hardware.Computer
 $c.IsCpuEnabled = $true
 $c.IsGpuEnabled = $true
@@ -399,10 +426,12 @@ $c.Close()
 $zoneErr = $null; $freqErr = $null
 $zones = @()
 try {
-  $zones = @((Get-Counter '\\Thermal Zone Information(*)\\*' -ErrorAction Stop).CounterSamples |
+  $temperatureName = (Get-LocalizedCounterPath 'Thermal Zone Information' 'Temperature').Split('\\')[-1]
+  $passiveName = (Get-LocalizedCounterPath 'Thermal Zone Information' '% Passive Limit').Split('\\')[-1]
+  $zones = @((Get-DiagnosticCounter 'Thermal Zone Information' @('Temperature', '% Passive Limit')).CounterSamples |
     Group-Object InstanceName | ForEach-Object {
-      $t = $_.Group | Where-Object { $_.Path -like '*\\temperature' } | Select-Object -First 1
-      $p = $_.Group | Where-Object { $_.Path -like '*passive limit*' } | Select-Object -First 1
+      $t = $_.Group | Where-Object { $_.Path.EndsWith(('\\' + $temperatureName), [StringComparison]::OrdinalIgnoreCase) } | Select-Object -First 1
+      $p = $_.Group | Where-Object { $_.Path.EndsWith(('\\' + $passiveName), [StringComparison]::OrdinalIgnoreCase) } | Select-Object -First 1
       if ($null -eq $t) { return }
       $tc = [math]::Round($t.CookedValue - 273.15, 1)
       if ($tc -lt -50 -or $tc -gt 150) { return }
@@ -417,7 +446,7 @@ try {
 # 降频（免管理员）：各核频率占最大百分比
 $fMin = $null; $fAvg = $null; $fCores = 0
 try {
-  $f = @((Get-Counter '\\Processor Information(*)\\% of Maximum Frequency' -ErrorAction Stop).CounterSamples |
+  $f = @((Get-DiagnosticCounter 'Processor Information' '% of Maximum Frequency').CounterSamples |
     Where-Object { $_.InstanceName -match '^\\d+,\\d+$' })
   $fCores = $f.Count
   if ($f.Count -gt 0) {
@@ -442,6 +471,8 @@ async function collectSensor(): Promise<any> {
 	// 重试无判据，故不自动重试，让模型知情后自行决定。
 	const cErr = r.counterErrors ?? {};
 	const out: any = {
+		degraded: r.degraded,
+		collectionErrors: r.collectionErrors,
 		admin: r.admin,
 		pawnio: r.pawnio,
 		hardware: r.hardware,
@@ -452,6 +483,7 @@ async function collectSensor(): Promise<any> {
 	};
 	if (cErr.thermal || cErr.frequency) out.counterErrors = cErr;
 	out.notice =
+		collectionNotice(r) +
 		`sensors=LHM 可读传感器（GPU 等，免管理员）；thermalZones=主板热区（passivePct<100 表示该热区正在被动降热）；` +
 		`frequency=各核频率占最大频率百分比（minPctOfMax 低 + 负载高 = 过热/功耗降频的直接信号）。` +
 		`CPU 核心温度需内核驱动（PawnIO），零安装约束下不可得，用降频信号替代。${pawnioFull}` +
@@ -522,7 +554,7 @@ async function collectOverview(): Promise<any> {
 	if (r && typeof r.error === "string") return { error: r.error };
 	return {
 		...r,
-		notice: `整机负载快照。mem=物理内存用量（usedPct>90 提示内存吃紧，可与 proc.byMem 对照找大户）；cpuTotalPct=整机 CPU 占用率（近 1 秒差分，可与 proc.byCpu 对照）；pagefile=页面文件分配/当前/峰值用量（usedMB 持续接近 allocMB 说明物理内存不足在靠页面文件撑）；pool=内核内存池（nonpaged 不可换出，持续异常增长多为驱动泄漏——内存高但进程榜单对不上大户时看这里）；machine=机型（vendor/model/cpu/bios，现场按机型匹配已知问题：散热缺陷、OEM 预装坑）；uptime=开机时长。`,
+		notice: `${collectionNotice(r)}整机负载快照。mem=物理内存用量（usedPct>90 提示内存吃紧，可与 proc.byMem 对照找大户）；cpuTotalPct=整机 CPU 占用率（近 1 秒差分，可与 proc.byCpu 对照）；pagefile=页面文件分配/当前/峰值用量（usedMB 持续接近 allocMB 说明物理内存不足在靠页面文件撑）；pool=内核内存池（nonpaged 不可换出，持续异常增长多为驱动泄漏——内存高但进程榜单对不上大户时看这里）；machine=机型（vendor/model/cpu/bios，现场按机型匹配已知问题：散热缺陷、OEM 预装坑）；uptime=开机时长。`,
 	};
 }
 

@@ -40,10 +40,12 @@
  * - provider 后置正则用 [regex]::new + 1s MatchTimeout（防灾难性回溯）；
  *   消息子串用 IndexOf OrdinalIgnoreCase（无正则，零回溯风险）
  */
+
 import { execFile } from "node:child_process";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import { psString } from "./pwsh-data";
 
 const execFileP = promisify(execFile);
 
@@ -81,7 +83,14 @@ export async function runPwsh(command: string, timeoutMs = 30000, pwshPath: stri
 	try {
 		const r = await execFileP(
 			pwshPath,
-			["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", command],
+			[
+				"-NoProfile",
+				"-NonInteractive",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false);\n" + command,
+			],
 			{ timeout: timeoutMs, windowsHide: true, encoding: "buffer", maxBuffer: 16 * 1024 * 1024 },
 		);
 		const stdout = decodeBuffer(r.stdout as Buffer);
@@ -109,7 +118,7 @@ export async function runPwsh(command: string, timeoutMs = 30000, pwshPath: stri
 const RE_LOGNAME = /^[A-Za-z0-9][A-Za-z0-9 ./_-]{0,99}$/;
 /** 提供程序精确名（FilterHashtable ProviderName 不支持通配符，走下推的必须是精确名）：
  *  'Service Control Manager'、'Microsoft-Windows-WHEA-Logger' 等。 */
-const RE_PROVIDER = /^[A-Za-z0-9][A-Za-z0-9 ._-]{0,127}$/;
+const RE_PROVIDER = /^[A-Za-z0-9.][A-Za-z0-9 ._-]{0,127}$/;
 
 export type LevelTier = "warn" | "error";
 
@@ -126,7 +135,7 @@ export interface CoreQuery {
 
 /** 字符串插值进 pwsh 单引号字面量的转义（白名单已挡住引号，此处兜底防御） */
 function pwshSingleQuote(s: string): string {
-	return `'${s.replace(/'/g, "''")}'`;
+	return psString(s);
 }
 
 function asInt(v: unknown): number | null {
@@ -277,13 +286,13 @@ const COUNTS_MAX = 100;
  *  多组：boot 需要（ID 白名单）OR（WHEA-Logger 提供者），而 FilterHashtable
  *  跨字段只能 AND，故按组下推后流式去重（$seen：logName/recordId —— WHEA
  *  声明的 ID 19 与白名单的 19 重叠，去重是真实需要的）。
- *  后置过滤（msgLike/providerRe）只允许单组查询。 */
+ *  多组查询允许共享同一后置过滤（msgLike/providerRe）。 */
 export function buildEventQueryCmd(specs: CoreQuery | CoreQuery[]): string {
 	const list = Array.isArray(specs) ? specs : [specs];
 	if (list.length === 0) throw new Error("至少需要一个查询组");
 	const top = list[0].top;
-	if (list.length > 1 && list.some((s) => s.msgLike || s.providerRe)) {
-		throw new Error("多组查询不支持 msgLike/providerRe 后置过滤");
+	if (list.some((s) => s.msgLike !== list[0].msgLike || s.providerRe !== list[0].providerRe)) {
+		throw new Error("多组查询必须使用相同的 msgLike/providerRe 后置过滤");
 	}
 	const msgLike = list.find((s) => s.msgLike)?.msgLike;
 	const providerRe = list.find((s) => s.providerRe)?.providerRe;
@@ -310,10 +319,10 @@ export function buildEventQueryCmd(specs: CoreQuery | CoreQuery[]): string {
 	if (providerRe) {
 		lines.push("$provRe = $null; $reErr = $null");
 		lines.push(
-			`try { $provRe = [regex]::new('${providerRe.replace(/'/g, "''")}', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase, [timespan]::FromSeconds(1)) } catch { $reErr = [string]$_.Exception.Message }`,
+			`try { $provRe = [regex]::new(${psString(providerRe)}, [System.Text.RegularExpressions.RegexOptions]::IgnoreCase, [timespan]::FromSeconds(1)) } catch { $reErr = [string]$_.Exception.Message }`,
 		);
 	}
-	if (msgLike) lines.push(`$msgLike = '${msgLike.replace(/'/g, "''")}'`);
+	if (msgLike) lines.push(`$msgLike = ${psString(msgLike)}`);
 
 	// 逐组流式枚举（组内时间倒序）：计数表只读 ProviderName/Id/TimeCreated；
 	// 完整记录每组最多物化 top 条，多组合并后统一排序取全局 top ——
@@ -581,9 +590,8 @@ export const WHEA_PROVIDER = "Microsoft-Windows-WHEA-Logger"; // 精确名实测
 
 /** crash：官方崩溃文档 1000/1001 + 启动失败补充 1026/33·35 */
 export const CRASH_IDS = [1000, 1001, 1002, 1026, 33, 35];
-/** 1000/1001/1002/1026 硬压 Error 级：真崩溃以 Error 级写入；部分服务（如 VMware）
- *  以 Information 级复用 ID 1000 记普通运行日志，不压级别会造成整屏误报。 */
-export const CRASH_IDS_ERROR = [1000, 1001, 1002, 1026];
+/** Application Error / .NET Runtime 限 Error；WER 与 Hang 保留原始级别。 */
+export const CRASH_IDS_ERROR = [1000, 1026];
 /** 33/35（SideBySide）级别未逐条核实，保持不限级别，避免漏报 */
 export const CRASH_IDS_ANY = [33, 35];
 /** crash 的典型崩溃来源 provider（软标注用）：命中但 provider 不在名单内的标 atypical */
@@ -627,7 +635,8 @@ export async function isAdminPwsh(): Promise<boolean> {
 		"ConvertTo-Json ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)",
 		10000,
 	);
-	adminCache = r === true;
+	if (typeof r !== "boolean") throw new Error(`管理员身份探测失败: ${r?.error ?? "返回结构异常"}`);
+	adminCache = r;
 	return adminCache;
 }
 
@@ -852,16 +861,41 @@ async function routeScope(
 		}
 		case "crash": {
 			const app = optStr(params.app, "app");
-			// 硬过滤：1000/1001/1002/1026 只认 Error 级（VMware 类以 Information 级复用 1000 的普通日志被滤）；
-			// 33/35 不限级别（级别未逐条核实，避免漏报）
+			// 提供程序与 ID 配对，避免第三方复用 ID；WER / Hang 保留原始级别。
 			const groups: Parameters<typeof queryEvents>[0] = [
-				{ logNames: ["Application"], ids: CRASH_IDS_ERROR, level: "error", msgLike: app, hours, top },
-				{ logNames: ["Application"], ids: CRASH_IDS_ANY, msgLike: app, hours, top },
+				{
+					logNames: ["Application"],
+					ids: [1000],
+					providers: ["Application Error"],
+					level: "error",
+					msgLike: app,
+					hours,
+					top,
+				},
+				{ logNames: ["Application"], ids: [1002], providers: ["Application Hang"], msgLike: app, hours, top },
+				{
+					logNames: ["Application"],
+					ids: [1026],
+					providers: [".NET Runtime"],
+					level: "error",
+					msgLike: app,
+					hours,
+					top,
+				},
+				{
+					logNames: ["Application"],
+					ids: [1001],
+					providers: ["Windows Error Reporting"],
+					msgLike: app,
+					hours,
+					top,
+				},
+				{ logNames: ["Application"], ids: CRASH_IDS_ANY, providers: ["SideBySide"], msgLike: app, hours, top },
 			];
 			const r = await queryEvents(groups);
 			const out = payload(
 				r,
-				`crash：白名单=崩溃 1000 / WER 1001 / 无响应 1002 / .NET Runtime 1026（仅 Error 级：部分服务以 Information 级复用 1000 记普通日志，已滤）/ SideBySide 33·35（不限级别）。${app ? `app 过滤=「${app}」（消息子串，不区分大小写）。` : ""}atypical=true=provider 非典型崩溃来源，请人工判读。`,
+				`crash：白名单=崩溃 1000 / WER 1001 / 无响应 1002 / .NET Runtime 1026（按提供程序限定；WER/无响应保留原始级别）/ SideBySide 33·35（不限级别）。${app ? `app 过滤=「${app}」（消息子串，不区分大小写）。` : ""}atypical=true=provider 非典型崩溃来源，请人工判读。`,
 			);
 			if (!out.error) {
 				// 软标注：Error 级命中里 provider 不属于典型崩溃来源的，标出来请人工判读

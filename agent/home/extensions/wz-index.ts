@@ -13,7 +13,8 @@
  */
 
 import { execFile } from "node:child_process";
-import { createReadStream, existsSync, mkdirSync, rmSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import { createReadStream, existsSync, promises as fsp, mkdirSync, rmSync } from "node:fs";
 import { dirname, join, resolve, sep } from "node:path";
 import * as readline from "node:readline";
 import { fileURLToPath } from "node:url";
@@ -34,12 +35,37 @@ interface WzStore {
 	dirs: Map<string, Map<string, number>>;
 	/** 盘符 → 规范化文件路径 → 字节（≥1MB 的大文件） */
 	files: Map<string, Map<string, number>>;
+	identities: Map<string, string>;
+	failed: Set<string>;
+	pending: Map<string, Promise<boolean>>;
 }
 
 /** 进程级单例账本（globalThis 免疫扩展加载器的模块实例隔离） */
 const g = globalThis as any;
 if (!g.__wzIndexStore) g.__wzIndexStore = { dirs: new Map(), files: new Map() };
 const store: WzStore = g.__wzIndexStore;
+store.identities ??= new Map();
+store.failed ??= new Set();
+store.pending ??= new Map();
+
+/** Node/libuv st_dev is the Windows volume serial. Never reuse an unidentified volume. */
+export async function refreshVolume(drive: string): Promise<string | null> {
+	let identity: string | null = null;
+	try {
+		const st = await fsp.stat(drive + "\\", { bigint: true });
+		if (st.dev !== 0n) identity = `${st.dev}:${st.birthtimeNs}`;
+	} catch {
+		/* Removed media or denied root: discard stale data. */
+	}
+	if (!identity || store.identities.get(drive) !== identity) {
+		store.dirs.delete(drive);
+		store.files.delete(drive);
+		store.failed.delete(drive);
+		store.identities.delete(drive);
+		if (identity) store.identities.set(drive, identity);
+	}
+	return identity;
+}
 
 /** 规范化路径：大写、无尾分隔符 */
 export const normPath = (p: string) =>
@@ -87,17 +113,21 @@ export function getIndex(drive: string): { dirs: Map<string, number> | null; fil
 
 export async function buildIndex(driveRoot: string): Promise<boolean> {
 	if (!existsSync(WIZTREE)) return false;
-	mkdirSync(WIZTREE_TMP, { recursive: true });
-	const csvPath = join(WIZTREE_TMP, "wz.csv");
+	const csvPath = join(WIZTREE_TMP, `wz-${process.pid}-${randomUUID()}.csv`);
 	try {
+		const drive = driveKey(driveRoot);
+		if (!drive) return false;
+		const identity = await refreshVolume(drive);
+		if (!identity) return false;
+		mkdirSync(WIZTREE_TMP, { recursive: true });
 		await execFileP(
 			WIZTREE,
 			[driveRoot + sep, "/admin=0", `/export=${csvPath}`, "/exportfolders=1", "/exportfiles=1"],
 			{ timeout: 180000, windowsHide: true, maxBuffer: 1024 * 1024 },
 		);
 		if (!existsSync(csvPath)) return false;
-		const drive = driveKey(driveRoot);
-		if (!drive) return false;
+		const dirs = new Map<string, number>();
+		const files = new Map<string, number>();
 		const rl = readline.createInterface({
 			input: createReadStream(csvPath, { encoding: "utf-8" }),
 			crlfDelay: Infinity,
@@ -107,11 +137,14 @@ export async function buildIndex(driveRoot: string): Promise<boolean> {
 			if (!m) continue;
 			const bytes = +m[2];
 			if (/[\\/]$/.test(m[1])) {
-				addDirLine(m[1], bytes, drive);
+				dirs.set(normPath(m[1]), bytes);
 			} else {
-				addFileLine(m[1], bytes, drive);
+				if (bytes >= FILE_INDEX_MIN_BYTES) files.set(normPath(m[1]), bytes);
 			}
 		}
+		if (!dirs.size || (await refreshVolume(drive)) !== identity) return false;
+		store.dirs.set(drive, dirs);
+		store.files.set(drive, files);
 		return true;
 	} catch {
 		return false;
@@ -125,7 +158,7 @@ export async function buildIndex(driveRoot: string): Promise<boolean> {
 }
 
 /** 建账失败过的盘（本进程内不再反复尝试，避免每次 ls 都撞一次失败） */
-const failedDrives = new Set<string>();
+const failedDrives = store.failed;
 
 /** ls 入口：确保目标所在盘的账本就绪（缺账则触发 WizTree 全盘扫描）。
  *  UNC 路径 / 无 WizTree / 建账失败 → 返回空账，调用方走降级路径。 */
@@ -136,9 +169,18 @@ export async function ensureIndex(target: string): Promise<{
 }> {
 	const drive = driveKey(target);
 	if (!drive) return { dirs: null, files: null, drive: null };
+	const identity = await refreshVolume(drive);
+	if (!identity) return { dirs: null, files: null, drive };
 	if (!store.dirs.has(drive) && !failedDrives.has(drive)) {
-		const ok = await buildIndex(drive);
-		if (!ok) failedDrives.add(drive);
+		const key = `${drive}:${identity}`;
+		let pending = store.pending.get(key);
+		if (!pending) {
+			pending = buildIndex(drive);
+			store.pending.set(key, pending);
+		}
+		const ok = await pending;
+		store.pending.delete(key);
+		if (!ok && store.identities.get(drive) === identity) failedDrives.add(drive);
 	}
 	return { dirs: store.dirs.get(drive) ?? null, files: store.files.get(drive) ?? null, drive };
 }

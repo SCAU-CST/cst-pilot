@@ -28,10 +28,12 @@
  * - find 的 id 条件不做 WQL 下推（HardwareID 是字符串数组，WQL LIKE 不支持），
  *   改为全枚举 + Node 侧对 deviceId/hardwareIds 双通道后置匹配
  */
+
 import { execFile } from "node:child_process";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import { collectionNotice, diagnosticCommand, psString } from "./pwsh-data";
 
 const execFileP = promisify(execFile);
 
@@ -68,7 +70,7 @@ export async function runPwsh(command: string, timeoutMs = 30000, pwshPath: stri
 	try {
 		const r = await execFileP(
 			pwshPath,
-			["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", command],
+			["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", diagnosticCommand(command)],
 			{ timeout: timeoutMs, windowsHide: true, encoding: "buffer", maxBuffer: 16 * 1024 * 1024 },
 		);
 		const stdout = decodeBuffer(r.stdout as Buffer);
@@ -105,7 +107,7 @@ export function escapeWqlStr(s: string): string {
 	return s.replace(/"/g, '""');
 }
 
-/** find.name：子串，可含任意可见字符（转义后拼 LIKE），拒绝控制字符 */
+/** find.name：Node 侧字面子串匹配，可含任意可见字符，拒绝控制字符 */
 const RE_NAME = /^[^\x00-\x1f]{1,100}$/;
 /** find.class：固定英文类名（Net / MEDIA / Bluetooth / Display / USB 等） */
 const RE_CLASS = /^[A-Za-z0-9][A-Za-z0-9 ._-]{0,39}$/;
@@ -164,21 +166,17 @@ export interface FindCond {
 	id?: string; // 硬件 ID / DeviceID 子串
 }
 
-/** find：同一条 Win32_PnPEntity 枚举，条件动态拼 WQL（AND 语义）。
- *  只拼白名单字段，不暴露任意 WQL；id 不下推（HardwareID 是数组），
- *  由 Node 侧后置匹配（见 collectFind）。
- *  引号规则（实测踩坑）：外层 -Filter '...' 单引号包裹，WQL 字符串
- *  字面量必须用双引号（与 CMD_PROBLEM 同款），否则内层单引号把外层
- *  提前闭合，过滤条件被静默拆散（SilentlyContinue 下表现为命中量异常） */
+/** find：class 白名单条件下推 WQL，过滤字符串经 psString 作为数据传入。
+ *  name/id 在 Node 侧按字面子串匹配；HardwareID 为数组，不能用 DeviceID 预筛。 */
 export function buildFindCmd(cond: FindCond): string {
 	const parts: string[] = [];
-	if (cond.name) parts.push(`Name LIKE "%${escapeLike(escapeWqlStr(cond.name))}%"`);
+	// Name and hardware IDs use literal Node-side substring matching.
 	if (cond.class) parts.push(`PNPClass="${escapeWqlStr(cond.class)}"`);
-	if (cond.id) parts.push(`DeviceID LIKE "%${escapeLike(escapeWqlStr(cond.id))}%"`);
+
 	const wql = parts.join(" AND ");
 	return `
 $ErrorActionPreference = 'SilentlyContinue'
-$d = Get-CimInstance Win32_PnPEntity -Filter '${wql}' |
+$d = Get-CimInstance Win32_PnPEntity ${wql ? `-Filter ${psString(wql)}` : ""} |
   ForEach-Object { [ordered]@{ name = $_.Name; class = $_.PNPClass; status = $_.Status; errorCode = $_.ConfigManagerErrorCode; deviceId = $_.DeviceID; hardwareIds = @($_.HardwareID) } }
 [ordered]@{ devices = @($d); count = @($d).Count } | ConvertTo-Json -Depth 4 -Compress
 `;
@@ -200,6 +198,8 @@ export interface CoreResult {
 	drivers?: DriverRow[];
 	notice?: string;
 	error?: string;
+	degraded?: boolean;
+	collectionErrors?: unknown[];
 }
 
 export interface DeviceRow {
@@ -263,7 +263,9 @@ export async function collectProblem(): Promise<CoreResult> {
 	return {
 		devices: r.devices ?? [],
 		count: r.count ?? 0,
-		notice: `errorCode 为 ConfigManagerErrorCode 原始值（0 = 正常），不翻译；hardwareIds（VEN/DEV）供联网定位驱动。${NOTICE_BLINDSPOT}`,
+		degraded: r.degraded,
+		collectionErrors: r.collectionErrors,
+		notice: `${collectionNotice(r)}errorCode 为 ConfigManagerErrorCode 原始值（0 = 正常），不翻译；hardwareIds（VEN/DEV）供联网定位驱动。${NOTICE_BLINDSPOT}`,
 	};
 }
 
@@ -273,7 +275,9 @@ export async function collectExternal(): Promise<CoreResult> {
 	return {
 		devices: r.devices ?? [],
 		removable: r.removable ?? [],
-		notice: `devices 含内置 USB 设备（自带摄像头）与内置屏（DISPLAY\\ 前缀），由调用方区分；errorCode 为原始值不翻译。${NOTICE_BLINDSPOT}`,
+		degraded: r.degraded,
+		collectionErrors: r.collectionErrors,
+		notice: `${collectionNotice(r)}devices 含内置 USB 设备（自带摄像头）与内置屏（DISPLAY\\ 前缀），由调用方区分；errorCode 为原始值不翻译。${NOTICE_BLINDSPOT}`,
 	};
 }
 
@@ -287,7 +291,9 @@ export async function collectCore(): Promise<CoreResult> {
 		display: r.display ?? [],
 		services: r.services ?? [],
 		drivers: r.drivers ?? [],
-		notice: `services = bthserv / Audiosrv 状态（缺失 = 无该服务）；connStatus 为 NetConnectionStatus 原始值；drivers 表驱动是否过旧请联网比对最新版，工具不判断。${NOTICE_BLINDSPOT}`,
+		degraded: r.degraded,
+		collectionErrors: r.collectionErrors,
+		notice: `${collectionNotice(r)}services = bthserv / Audiosrv 状态（缺失 = 无该服务）；connStatus 为 NetConnectionStatus 原始值；drivers 表驱动是否过旧请联网比对最新版，工具不判断。${NOTICE_BLINDSPOT}`,
 	};
 }
 
@@ -307,6 +313,7 @@ export async function collectFind(raw: FindCond): Promise<CoreResult> {
 	const r = await runPwsh(buildFindCmd({ name, class: klass, id }));
 	if (r.error) return { error: r.error };
 	let devices: DeviceRow[] = r.devices ?? [];
+	if (name) devices = devices.filter((d) => (d.name ?? "").toLowerCase().includes(name.toLowerCase()));
 	if (id) {
 		const needle = id.toLowerCase();
 		devices = devices.filter(
@@ -318,7 +325,9 @@ export async function collectFind(raw: FindCond): Promise<CoreResult> {
 	return {
 		devices,
 		count: devices.length,
-		notice: `errorCode 为原始值不翻译；匹配条件 AND 组合，id 对 deviceId 与 hardwareIds 双通道匹配。`,
+		degraded: r.degraded,
+		collectionErrors: r.collectionErrors,
+		notice: `${collectionNotice(r)}errorCode 为原始值不翻译；匹配条件 AND 组合，id 对 deviceId 与 hardwareIds 双通道匹配。`,
 	};
 }
 

@@ -42,6 +42,7 @@ async function walkSize(
 	dir: string,
 	budget: { files: number; deadline: number },
 ): Promise<{ bytes: number; complete: boolean }> {
+	if (budget.files >= WALK_BUDGET || Date.now() >= budget.deadline) return { bytes: 0, complete: false };
 	let bytes = 0;
 	let complete = true;
 	let entries: import("node:fs").Dirent[] | undefined;
@@ -51,19 +52,19 @@ async function walkSize(
 		return { bytes: 0, complete: false };
 	}
 	for (const e of entries) {
+		if (budget.files >= WALK_BUDGET || Date.now() >= budget.deadline) return { bytes, complete: false };
+		budget.files++;
+		if (e.isSymbolicLink()) {
+			complete = false;
+			continue;
+		}
 		const full = join(dir, e.name);
 		try {
 			if (e.isDirectory()) {
-				// 跳过符号链接/junction 目录，避免环
-				if (e.isSymbolicLink()) continue;
 				const sub = await walkSize(full, budget);
 				bytes += sub.bytes;
 				complete = complete && sub.complete;
 			} else {
-				if (budget.files++ >= WALK_BUDGET || Date.now() > budget.deadline) {
-					complete = false;
-					continue;
-				}
 				bytes += (await fsp.stat(full)).size;
 			}
 		} catch {
@@ -120,7 +121,7 @@ export default function (pi: any) {
 
 			const { dirs, files } = await ensureIndex(target);
 			let incomplete = false;
-			const items: { name: string; type: "file" | "dir"; bytes: number }[] = [];
+			const items: { name: string; type: "file" | "dir" | "unknown"; bytes: number | null }[] = [];
 			const budget = { files: 0, deadline: Date.now() + WALK_TIMEOUT_MS };
 
 			for (const name of names) {
@@ -143,24 +144,34 @@ export default function (pi: any) {
 						items.push({ name, type: "file", bytes });
 					}
 				} catch {
-					// stat 失败（权限/锁定）：先异步补 stat，仍失败则查账本兜底，都查不到记 0
 					const s = await fsp.stat(full).catch(() => null);
+					const dirBytes = dirs?.get(key);
+					const fileBytes = files?.get(key);
 					if (s?.isDirectory()) {
-						const cached = dirs?.get(key);
-						items.push({ name, type: "dir", bytes: cached ?? 0 });
+						const r = dirBytes !== undefined ? { bytes: dirBytes, complete: true } : await walkSize(full, budget);
+						items.push({ name, type: "dir", bytes: r.bytes });
+						if (!r.complete) incomplete = true;
+					} else if (s) {
+						items.push({ name, type: "file", bytes: s.size > 0 ? s.size : (fileBytes ?? 0) });
+					} else if (dirBytes !== undefined || fileBytes !== undefined) {
+						items.push({
+							name,
+							type: dirBytes !== undefined ? "dir" : "file",
+							bytes: dirBytes ?? fileBytes ?? null,
+						});
 					} else {
-						items.push({ name, type: "file", bytes: files?.get(key) ?? 0 });
+						items.push({ name, type: "unknown", bytes: null });
+						incomplete = true;
 					}
-					if (s?.isDirectory() && dirs?.get(key) === undefined) incomplete = true;
 				}
 			}
 
-			items.sort((a, b) => b.bytes - a.bytes);
-			const totalBytes = items.reduce((sum, i) => sum + i.bytes, 0);
+			items.sort((a, b) => (b.bytes ?? -1) - (a.bytes ?? -1));
+			const totalBytes = items.reduce((sum, i) => sum + (i.bytes ?? 0), 0);
 			const truncated = items.length > top;
 			const kept = items.slice(0, top);
 			const omitted = items.slice(top);
-			const omittedBytes = omitted.reduce((sum, i) => sum + i.bytes, 0);
+			const omittedBytes = omitted.reduce((sum, i) => sum + (i.bytes ?? 0), 0);
 
 			return {
 				content: [
@@ -174,14 +185,18 @@ export default function (pi: any) {
 							entries: kept.map((i) => ({
 								name: i.name,
 								type: i.type,
-								size: fmtSize(i.bytes),
+								size: i.bytes === null ? null : fmtSize(i.bytes),
 								bytes: i.bytes,
-								pct: totalBytes > 0 ? +((100 * i.bytes) / totalBytes).toFixed(1) : null,
+								pct:
+									!incomplete && i.bytes !== null && totalBytes > 0
+										? +((100 * i.bytes) / totalBytes).toFixed(1)
+										: null,
 							})),
 							...(truncated
 								? {
 										omitted: {
 											count: omitted.length,
+											unknownCount: omitted.filter((i) => i.bytes === null).length,
 											size: fmtSize(omittedBytes),
 											note: "已按大小截断，其余为小项",
 										},

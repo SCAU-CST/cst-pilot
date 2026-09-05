@@ -26,9 +26,9 @@ description: sys 工具的参数与返回字段说明。覆盖 scope 枚举含�
 
 ## scope=gpu：GPU 状态
 
-1. 数据来源：`GPU Engine` 与 `GPU Process Memory` 性能计数器按 pid 聚合（这两个计数器组在中文 Windows 上英文名可用，未被本地化；偶发无效采样会自动重试 1 次）；适配器清单取 `Win32_VideoController`；检测到 `nvidia-smi`（系统驱动自带）时并行附带显卡状态
-2. 字段：`byGpuPct`（每进程 GPU 利用率 Top N，`engtypes` 为该进程用到的引擎类型清单，如 3d / copy / videodecode / videoencode）/ `byDedicatedMB`（每进程专用显存 Top N）/ `adapters`（显卡适配器清单：name / vendor / driver / status / bus）/ `nvidia`（温度 / 功耗 / 显存 / 利用率 / 驱动版本，无 NVIDIA 显卡时为 null）/ `engineSamples`（聚合前原始实例数）/ `lhmGpu`（仅无 NVIDIA 时出现，LHM 用户态读的核显 / 其他卡原始传感器）
-3. 字段语义：`gpuPct` 是瞬时采样；`nvidia: null` 只说明未检出 NVIDIA 独显，不代表没有显卡；`adapters.bus` = PCI 为实体卡插槽设备，ROOT / USB 等多为虚拟显示 / 采集卡，真实显卡以 vendor 为硬件厂商的那条为准；`lhmGpu.hardware` 为空 = 本机无可读 GPU 传感器（部分老核显 LHM 不支持），此时每进程利用率 `byGpuPct` 仍可用
+1. 数据来源：`GPU Engine` 与 `GPU Process Memory` 性能计数器按 pid 聚合（通过 Windows PDH 将英文路径转换为本地化路径；偶发无效采样会自动重试 1 次）；适配器清单取 `Win32_VideoController`；检测到 `nvidia-smi`（系统驱动自带）时并行附带显卡状态
+2. 字段：`byGpuPct`（每进程 GPU 利用率 Top N，`engtypes` 为该进程用到的引擎类型清单，如 3d / copy / videodecode / videoencode）/ `byDedicatedMB`（每进程专用显存 Top N）/ `adapters`（显卡适配器清单：name / vendor / driver / status / bus）/ `nvidia`（每张 NVIDIA 卡的状态数组，含 uuid / pciBusId / 温度 / 功耗 / 显存 / 利用率 / 驱动版本；程序不存在为 null，调用失败保留 error）/ `engineSamples`（聚合前原始实例数）/ `lhmGpu`（nvidia-smi 不存在或失败时出现，LHM 用户态读的核显 / 其他卡原始传感器）
+3. 字段语义：`gpuPct` 是该进程跨适配器最繁忙引擎的瞬时利用率，不累加并行引擎；`engines` 保留适配器和引擎样本；`nvidia: null` 只说明 nvidia-smi 不存在，不代表没有显卡；`adapters.bus` = PCI 为实体卡插槽设备，ROOT / USB 等多为虚拟显示 / 采集卡，真实显卡以 vendor 为硬件厂商的那条为准；`lhmGpu.hardware` 为空 = 本机无可读 GPU 传感器（部分老核显 LHM 不支持），此时每进程利用率 `byGpuPct` 仍可用
 
 ## scope=io：磁盘 IO 定位
 

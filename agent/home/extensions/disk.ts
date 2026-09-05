@@ -11,17 +11,19 @@
  */
 
 import { execFile } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { createReadStream, existsSync, promises as fsp, mkdirSync, rmSync, statfsSync } from "node:fs";
 import * as readline from "node:readline";
 import { promisify } from "node:util";
 import { StringEnum } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
 // 跨扩展共享的 WizTree 账本：usage 扫描顺手喂账，ls 直接吃现成
-import { addDirLine, addFileLine, driveKey } from "./wz-index";
+import { psString } from "./pwsh-data";
+import { addDirLine, addFileLine, driveKey, normPath, refreshVolume } from "./wz-index";
 
 const execFileP = promisify(execFile);
 
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const EXT_DIR = dirname(fileURLToPath(import.meta.url)); // .../agent/home/extensions
@@ -58,7 +60,14 @@ async function runPwsh(command: string, timeoutMs = 15000): Promise<any> {
 		// 异步执行：pwsh 运行期间 pi 事件循环不被冻结
 		const r = await execFileP(
 			PWSH,
-			["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", command],
+			[
+				"-NoProfile",
+				"-NonInteractive",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false);\n" + command,
+			],
 			{ timeout: timeoutMs, windowsHide: true, encoding: "buffer", maxBuffer: 16 * 1024 * 1024 },
 		);
 		const stdout = decodeBuffer(r.stdout as Buffer);
@@ -79,21 +88,63 @@ async function runPwsh(command: string, timeoutMs = 15000): Promise<any> {
 }
 
 const DISK_INFO_CMD =
-	"Get-PhysicalDisk | Select-Object FriendlyName,SerialNumber,MediaType,BusType,HealthStatus,OperationalStatus,Size,DeviceId | ConvertTo-Json -Depth 3";
+	"$ErrorActionPreference='Stop'; ConvertTo-Json -InputObject @(Get-PhysicalDisk | Select-Object FriendlyName,SerialNumber,MediaType,BusType,HealthStatus,OperationalStatus,Size,DeviceId) -Depth 3";
 
 const VOLUME_CMD =
-	"Get-CimInstance Win32_LogicalDisk | Select-Object DeviceID,VolumeName,FileSystem,DriveType,Size,FreeSpace | ConvertTo-Json -Depth 3";
+	"$ErrorActionPreference='Stop'; ConvertTo-Json -InputObject @(Get-CimInstance Win32_LogicalDisk | Select-Object DeviceID,VolumeName,FileSystem,DriveType,Size,FreeSpace) -Depth 3";
 
 // 盘符→物理盘关联（drive 过滤 info 用）：CIM 引用属性是对象，必须 ToString() 投影成字符串，
 // 形态如 Win32_LogicalDisk (DeviceID = "C:") / Win32_DiskPartition (DeviceID = "Disk #1, Partition #1")
 const DISK_ASSOC_CMD =
-	"Get-CimInstance Win32_LogicalDiskToPartition | Select-Object @{n='Dep';e={$_.Dependent.ToString()}},@{n='Ant';e={$_.Antecedent.ToString()}} | ConvertTo-Json -Depth 3";
+	"$ErrorActionPreference='Stop'; ConvertTo-Json -InputObject @(Get-CimInstance Win32_LogicalDiskToPartition | Select-Object @{n='Dep';e={$_.Dependent.ToString()}},@{n='Ant';e={$_.Antecedent.ToString()}}) -Depth 3";
 
-const SMART_CMD =
-	"try { Get-PhysicalDisk -ErrorAction Stop | Get-StorageReliabilityCounter -ErrorAction Stop | Select-Object DeviceId,Wear,Temperature,PowerOnHours,ReadErrorsTotal,WriteErrorsTotal | ConvertTo-Json -Depth 3 } catch { ConvertTo-Json @{ error = ($_ | Out-String).Trim() } }";
+function rows(value: any): any[] {
+	if (value?.error) throw new Error(value.error);
+	return value == null ? [] : Array.isArray(value) ? value : [value];
+}
+
+async function physicalIds(drive: string): Promise<string[]> {
+	const assoc = rows(await runPwsh(DISK_ASSOC_CMD));
+	const ids = new Set<string>();
+	for (const item of assoc) {
+		const volume = String(item.Dep ?? "").match(/DeviceID\s*=\s*"([A-Za-z]:)"/);
+		if (volume?.[1].toUpperCase() !== drive + ":") continue;
+		const disk = String(item.Ant ?? "").match(/Disk #(\d+)/i);
+		if (disk) ids.add(disk[1]);
+	}
+	if (!ids.size) throw new Error("无法确定目标卷对应的物理盘");
+	return [...ids];
+}
+
+const SMART_CMD = (ids?: string[]) => `
+$ErrorActionPreference = 'Stop'
+$data = @(); $failures = @(); $permissionDenied = $false
+function Test-AccessDenied($e) {
+  return ($e.CategoryInfo.Category -eq 'PermissionDenied' -or $e.Exception -is [UnauthorizedAccessException] -or $e.Exception.HResult -eq -2147024891)
+}
+try {
+  $disks = @(Get-PhysicalDisk)
+  ${ids ? `$disks = @($disks | Where-Object { @(${ids.map(psString).join(",")}) -contains [string]$_.DeviceId })` : ""}
+  if (-not $disks.Count) { throw '未找到可查询的物理盘' }
+  foreach ($disk in $disks) {
+    try {
+      $sample = @(Get-StorageReliabilityCounter -PhysicalDisk $disk -ErrorAction Stop | Select-Object DeviceId,Wear,Temperature,PowerOnHours,ReadErrorsTotal,WriteErrorsTotal)
+      if (-not $sample.Count) { throw '设备未返回可靠性计数器' }
+      $data += $sample
+    } catch {
+      $permissionDenied = $permissionDenied -or (Test-AccessDenied $_)
+      $failures += @{ deviceId = [string]$disk.DeviceId; error = $_.Exception.Message }
+    }
+  }
+} catch {
+  $permissionDenied = $permissionDenied -or (Test-AccessDenied $_)
+  $failures += @{ error = $_.Exception.Message }
+}
+ConvertTo-Json @{ data = $data; errors = $failures; permissionDenied = $permissionDenied } -Depth 4
+`;
 
 function fmtGB(bytes?: number | null): number | null {
-	return typeof bytes === "number" && bytes > 0 ? +(bytes / 2 ** 30).toFixed(1) : null;
+	return typeof bytes === "number" && Number.isFinite(bytes) && bytes >= 0 ? +(bytes / 2 ** 30).toFixed(1) : null;
 }
 
 /** usage 专用：GB 保留两位小数；小到两位归零的真实数据自动提升精度（绝不显示假 0） */
@@ -165,12 +216,14 @@ function parseWizDate(s: string): Date | null {
 /* 卷文件系统判定：WizTree 的 MFT 捷径仅 NTFS 有效，FAT32/exFAT/UNC 上它实际走目录遍历，
  * method 必须按卷类型标注，否则 FAT32 上会冒出假的 "wiztree-mft"。结果按盘符缓存。
  * fsutil 快路径对 NTFS 系统卷可能拒绝访问（实测错误 5），失败时用 pwsh CIM 兜底。 */
-const volFsCache = new Map<string, string | null>();
+const volFsCache = new Map<string, { identity: string; fs: string }>();
 async function volumeFs(drive: string | null): Promise<string | null> {
 	if (!drive) return null; // UNC 无盘符，保守按非 NTFS 处理
 	const key = drive.toUpperCase();
+	const identity = await refreshVolume(drive);
 	const hit = volFsCache.get(key);
-	if (hit !== undefined) return hit;
+	if (identity && hit?.identity === identity) return hit.fs;
+	volFsCache.delete(key);
 	let fs: string | null = null;
 	try {
 		const r = await execFileP("fsutil", ["fsinfo", "volumeinfo", drive], {
@@ -200,15 +253,17 @@ async function volumeFs(drive: string | null): Promise<string | null> {
 			fs = null;
 		}
 	}
-	volFsCache.set(key, fs);
+	if (identity && fs && (await refreshVolume(drive)) === identity) volFsCache.set(key, { identity, fs });
 	return fs;
 }
 
 function usageViaWizTree(rootPath: string, topN: number): Promise<any> {
 	return (async () => {
-		mkdirSync(WIZTREE_TMP, { recursive: true });
-		const csvPath = join(WIZTREE_TMP, "export.csv");
+		const csvPath = join(WIZTREE_TMP, `export-${process.pid}-${randomUUID()}.csv`);
 		try {
+			mkdirSync(WIZTREE_TMP, { recursive: true });
+			const scanDrive = driveKey(rootPath);
+			const identity = scanDrive ? await refreshVolume(scanDrive) : null;
 			// /exportfiles=1：文件行也导出 —— 大文件/扩展名/僵尸三本账的原料
 			await execFileP(WIZTREE, [rootPath, "/admin=0", `/export=${csvPath}`, "/exportfolders=1", "/exportfiles=1"], {
 				timeout: 180000,
@@ -221,9 +276,9 @@ function usageViaWizTree(rootPath: string, topN: number): Promise<any> {
 
 			// 流式逐行解析（不依赖表头，WizTree 表头随系统语言变化）：
 			// 每行 "路径",字节数,... 进聚合器后即丢，内存恒定
-			const norm = (p: string) => p.replace(/[\\/]+$/, "").toUpperCase();
+			const norm = normPath;
 			const rootKey = norm(rootPath);
-			const drive = driveKey(rootPath); // 有盘符才喂共享账本（UNC 路径跳过）
+			const drive = identity ? scanDrive : null; // 只有身份可确认的卷才入账
 			const dirTop = topKeeper<{ path: string; bytes: number }>(topN, (r) => r.bytes);
 			const fileTop = topKeeper<{ path: string; bytes: number }>(topN, (r) => r.bytes);
 			const staleTop = topKeeper<{ path: string; bytes: number; modified: string }>(topN, (r) => r.bytes);
@@ -278,6 +333,8 @@ function usageViaWizTree(rootPath: string, topN: number): Promise<any> {
 				}
 			}
 			if (rows === 0) return { error: "WizTree CSV 无数据行" };
+			if (scanDrive && identity && (await refreshVolume(scanDrive)) !== identity)
+				return { error: "扫描期间卷身份变化，请重试" };
 
 			const fsName = await volumeFs(drive);
 			const isNtfs = fsName === "NTFS";
@@ -447,67 +504,61 @@ export default function (pi: any) {
 				result.space = diskSpace(drive);
 			}
 
+			let mappedIds: string[] | undefined;
+			let mappingError: string | undefined;
+			if (drive && ["info", "health", "all"].includes(scope)) {
+				try {
+					mappedIds = await physicalIds(drive);
+				} catch (e: any) {
+					mappingError = String(e.message ?? e);
+				}
+			}
 			if (scope === "info" || scope === "all") {
 				const phys = await runPwsh(DISK_INFO_CMD);
 				const vols = await runPwsh(VOLUME_CMD);
-				let physRows: any[] = Array.isArray(phys) ? phys : [];
-				let volRows: any[] = Array.isArray(vols) ? vols : [];
-				if (drive && Array.isArray(phys) && Array.isArray(vols)) {
-					// drive 过滤（完整版）：卷按盘符滤；物理盘按盘符→分区→物理盘关联滤
-					try {
-						const assoc = await runPwsh(DISK_ASSOC_CMD);
-						if (!Array.isArray(assoc)) throw new Error("关联查询返回非数组");
-						const diskIdx = new Set<string>();
-						for (const a of assoc) {
-							const dep = String(a.Dep ?? "").match(/DeviceID\s*=\s*"([A-Za-z]:)"/);
-							if (!dep || dep[1].toUpperCase() !== `${drive}:`) continue;
-							const d = String(a.Ant ?? "").match(/Disk #(\d+)/i);
-							if (d) diskIdx.add(d[1]);
-						}
-						// CIM 把 DeviceId 序列化成纯数字字符串（"0"/"1"/"2"），与 Disk #N 直接对应
-						physRows = physRows.filter((d: any) => diskIdx.has(String(d.DeviceId)));
-						volRows = volRows.filter(
-							(v: any) =>
-								String(v.DeviceID ?? "")
-									.replace(/[^A-Za-z]/g, "")
-									.toUpperCase() === drive,
-						);
-					} catch (e) {
-						// 关联失败不吞数据：退回全量清单并如实提示，避免队员误以为已过滤
-						result.infoNotice = `盘符→物理盘关联查询失败（${String((e as any)?.message ?? e).slice(0, 120)}），info 返回全量清单未按 ${drive}: 过滤`;
-					}
+				if (phys?.error) result.physicalDisks = phys;
+				else {
+					const selected = rows(phys).filter((d) => !mappedIds || mappedIds.includes(String(d.DeviceId)));
+					result.physicalDisks = selected.map((d) => ({ ...d, sizeGB: fmtGB(d.Size), Size: undefined }));
+					if (mappingError)
+						result.infoNotice = `盘符关联失败（${mappingError}），physicalDisks 为未过滤全量清单；volumes 仍按盘符过滤`;
 				}
-				result.physicalDisks = Array.isArray(phys)
-					? physRows.map((d: any) => ({ ...d, sizeGB: fmtGB(d.Size), Size: undefined }))
-					: phys;
-				result.volumes = Array.isArray(vols)
-					? volRows.map((v: any) => ({
-							drive: v.DeviceID,
-							label: v.VolumeName,
-							fs: v.FileSystem,
-							driveType:
-								{ 2: "Removable", 3: "Fixed", 4: "Network", 5: "Optical" }[v.DriveType as number] ??
-								v.DriveType,
-							totalGB: fmtGB(v.Size),
-							freeGB: fmtGB(v.FreeSpace),
-						}))
-					: vols;
+				result.volumes = vols?.error
+					? vols
+					: rows(vols)
+							.filter((v) => !drive || String(v.DeviceID).toUpperCase() === drive + ":")
+							.map((v) => ({
+								drive: v.DeviceID,
+								label: v.VolumeName,
+								fs: v.FileSystem,
+								driveType:
+									({ 2: "Removable", 3: "Fixed", 4: "Network", 5: "Optical" } as Record<number, string>)[
+										v.DriveType
+									] ?? v.DriveType,
+								totalGB: fmtGB(v.Size),
+								freeGB: fmtGB(v.FreeSpace),
+							}));
 			}
 
 			if (scope === "health" || scope === "all") {
-				const smart = await runPwsh(SMART_CMD, 20000);
-				if (smart && !Array.isArray(smart) && typeof smart.error === "string") {
-					// 命令层失败（如权限不足）：给干净的中文说明，不带原始错误噪音
+				if (mappingError) {
 					result.smart = null;
-					result.smartNotice =
-						"SMART 数据需要管理员权限。当前以普通权限运行，已降级。如需寿命/温度数据，请以管理员身份重新启动 pi。";
+					result.smartNotice = `未查询 SMART：${mappingError}`;
 				} else {
-					result.smart = smart;
+					const smart = await runPwsh(SMART_CMD(mappedIds), 20000);
+					result.smart = smart?.error ? null : smart.data?.length ? smart.data : null;
+					if (smart?.error || smart.errors?.length) {
+						result.smartErrors = smart.error ? [{ error: smart.error }] : smart.errors;
+						result.smartNotice =
+							"SMART 部分或全部采集失败，原因见 smartErrors。" +
+							(smart.permissionDenied ? "检测到访问拒绝，可尝试以管理员身份重试。" : "");
+					}
 				}
 			}
 
 			if (scope === "usage") {
-				const rootPath = (params.path ?? "").trim();
+				const inputPath = (params.path ?? "").trim();
+				const rootPath = inputPath ? resolve(inputPath) : "";
 				if (!rootPath) {
 					result.usage = { error: 'scope=usage 需要提供 path，如 "C:\\" 或 "C:\\Users\\Tim2354"' };
 				} else if (!existsSync(rootPath)) {
