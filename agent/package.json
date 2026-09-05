@@ -4,13 +4,19 @@
   "description": "CST Pilot: portable diagnostics kit for the Computer Service Team, built on pi coding agent",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "check": "biome check home/extensions && tsc --noEmit -p tsconfig.json",
+    "format": "biome check --write home/extensions",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
-    "@earendil-works/pi-coding-agent": "^0.84.4"
+    "@earendil-works/pi-coding-agent": "0.84.4"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.3.5",
+    "typescript": "5.9.3"
   }
 }
