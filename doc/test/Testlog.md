@@ -83,3 +83,59 @@ B03/B07 的 SMART 与 B30/B31 的 Security 当时走权限降级；B06/B22 参�
 审查报告中的 22 项问题已修改；`tests/review-fixes.mjs` 的 16 组局部探针通过，覆盖参数字符串、错误传播、筛选、聚合、缓存、遍历预算和生成的 PowerShell 模板解析。本机另解析四条 PDH 计数器路径成功。
 
 此轮没有运行中大规模测试，没有执行特殊介质或全部 Windows 10/11 版本的实机验收；不能据此将 Testlist 未勾选环境改为通过。脚本在项目既有忽略目录中，不随 Git 分发。
+
+## 2026-09-05 · 开发机直连 · B01–B31 简单全量
+
+- 版本/提交：`e44b9f2`（diagnostics 包重构后首个全量）
+- 系统、硬件、权限：Windows 11，Maxsun i5-12600KF / RTX 5070 Ti / 32 GB / NVMe×3 + HDD×2；**非管理员**
+- 启动介质与目标卷：本地仓库直连（非 U 盘）；<Sys>=C，<Vol>=E
+- 执行者与模型：cst-test 工作区邻居 pi 实例（herdr wF:p2），deepseek-v4-flash @ opencode-go；核查者为本机独立 PowerShell
+- 范围及未执行项目：B01–B31 全部执行，无跳项；管理员侧对照（B03 双权限、B30/B31 管理员查询）未做——本机无管理员会话
+- 总耗时：Agent 侧 8 分 17 秒
+
+| ID | 调用与关键返回 | 独立核查 | 结论 | 耗时 |
+|---|---|---|---|---|
+| B01 | space 全卷 7 卷 C–I，free≤total | Get-Volume 逐卷一致（C 299.1，E 79.1 free） | 通过 | <1s |
+| B02 | info drive=E：volumes 仅 E:，physicalDisks 关联命中 WD SN580 | — | 通过 | 2–3s |
+| B03 | health drive=C：smart 采集被拒，smartErrors 按盘留错并提示提权 | 非管理员，符合设计 | 预期降级 | ~1s |
+| B04 | usage Kit top=10：wiztree-mft，四类表齐全 | — | 通过 | 3–5s |
+| B05 | usage WinSxS ×2：均 17.50GB / 28281 子项，冷热同量级 | 与 09-04 基线 28281 一致 | 通过 | 8–15s |
+| B06 | usage 不存在路径：明确 error | — | 通过 | <1s |
+| B07 | all：space/info 完整，smart 三盘逐项报权限错误，不互相吞 | — | 通过（smart 预期降级） | 3–4s |
+| B08 | ls Kit/pwsh top=15：325 子项 244.7MB，截断与 omitted 正确 | — | 通过 | ~1s |
+| B09 | ls WinSxS top=10：复用 B05 缓存未重扫 | 历史基线一致 | 通过 | ~1s |
+| B10 | ls E:\ top=20：18 子项 250.70GB，触发 E: 全盘建账 | — | 通过 | 20–40s |
+| B11 | overview：cpu 20、mem 24457/32557、机型 Maxsun/i5-12600KF | Win32_OperatingSystem 总内存 32557MB 一致 | 通过 | ~2s |
+| B12 | proc top=15：byCpu/byMem 各 15 | — | 通过 | 2–3s |
+| B13 | gpu：Ti PCI + GameViewer ROOT 虚拟；gpuPct 最忙引擎不累加；nvidia 单卡读全 | Win32_VideoController 两条一致 | 通过 | ~3s |
+| B14 | sensor：admin:false，LHM 6 传感器（GPU 温度/风扇/电压），CPU 核心温度不可得已声明 | — | 通过 | ~3s |
+| B15 | io ×2：intervalSec≈2.07，3 盘 busy≈0–1%，byIo 有活动进程 | Get-Counter %DiskTime 3.1 同量级 | 通过 | 2–3s |
+| B16 | startup：regItems 23（HKLM 8 + HKCU 15），disabled 三态，RunOnce 不套 Run 状态 | 注册表逐键计数 5+3+15+0=23 一致 | 通过 | 2–3s |
+| B17 | problem：0 异常设备 + notice | ConfigManagerErrorCode≠0 计数=0 | 通过 | ~1s |
+| B18 | core：net 10 / bluetooth 17 / audio 8 / display 2 / drivers 49 | 与 09-03 基线一致 | 通过 | ~4s |
+| B19 | external：USBSTOR Lenovo 58.6GB + 内置 USB/屏，notice 已声明 | Win32_LogicalDisk DriveType=2 仅 H: 一致 | 通过 | ~1.5s |
+| B20 | find class=Net→15；Realtek 整段 deviceId（含反斜杠）→命中 1；仅 HardwareID 子串 CC_0280→命中 1 | — | 通过 | ~1s×3 |
+| B21 | find name=Realtek→5；name+class=Net→2（子集，AND 生效） | — | 通过 | ~1s×2 |
+| B22 | find 无条件：明确报错 | — | 通过 | <1s |
+| B23 | recent hours=48：total 12227，counts 求和=total | 独立计数 12274，差值 47 为 WHEA 持续写入的窗口漂移 | 通过 | 1–2s |
+| B24 | boot kind=bluescreen：无 1001，全为 WHEA-17（n=12212），firstTime/lastTime 对应首尾 | — | 通过 | 1–2s |
+| B25 | crash 总 6 条全 WER/1001（Information 级保留）；app 过滤覆盖全部分组；chrome 空 | — | 通过 | ~1s×3 |
+| B26 | service：24h 无 SCM 故障，total 0 合法 | — | 通过 | ~1s |
+| B27 | disk：total 0 合法空命中 | — | 通过 | ~1s |
+| B28 | query ids=[41]：24h 无 Kernel-Power 41，字段齐全 | — | 通过 | ~1s |
+| B29 | detail ×2：System 360946632 与 Application 174751 均命中，字段与 B23–B25 样本一致 | — | 通过 | <1s×2 |
+| B30 | security：admin:false + degraded:true，未执行查询 | 非管理员，符合设计 | 预期降级 | <1s |
+| B31 | security type=logonFail：先报降级，无伪造 | 非管理员，符合设计 | 预期降级 | <1s |
+
+### 核查者对照
+
+- 卷容量、内存总量、适配器、可移动盘、注册表 Run 计数、异常设备数与 Agent 返回逐项吻合。
+- B23 计数差 47 条与 WHEA-17 持续刷屏（48h 约 1.2 万条）的窗口漂移相符，不判缺陷。
+
+### 缺陷与待查项
+
+1. **待查 · crash 回显只含第一组**：多组查询的 `ids`/`providers` 回显取 `specs[0]`（eventlog-core.ts `specs[0].ids`），crash 五组只回显 `ids:[1000] / providers:["Application Error"]`；事件列表、counts 与 notice 正确，但只看头部的调用者会误判查询范围。已定位代码，待修复。
+2. **待查 · proc/io 进程计数差**：proc.totalProcs=291（Get-Process）vs io.totalProcs=462（Win32_Process），与 09-04 记录（263/428）同型；源码确认枚举来源不同，口径差成立，是否含漏计待独立对照。
+3. **观察 · bluescreen 混入 corrected WHEA**：kind=bluescreen 白名单含 WHEA-Logger，本机全是已更正 PCIe 错误而非蓝屏，队员解读时需区分（文档已声明）。
+4. **硬件观察 · WHEA-17 刷屏**：48h 内 DEV_460D 根端口 AER 更正错误约 1.2 万条，与 09-04 同型，属机器/驱动层面，不归工具问题。
+5. 权限降级（SMART、security）均按设计如实转达；本轮未做管理员侧验证。
