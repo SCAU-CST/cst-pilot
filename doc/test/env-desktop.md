@@ -1,25 +1,27 @@
-# 环境测试：设备形态
+# 设备形态验证
 
-对应 Testlist「Windows 设备」维度。执行结构：① README 全量工具检测组 B01–B31；② 本文档差异项。
+先执行 [公共组 B01–B31](README.md#公共测试组-b01b31)，再按硬件选择下表项目。品牌名用于选样，不代表必须逐品牌完成才可记录结果。
 
-## 建议测试机画像
+## 样机选择
 
-| 形态 | 画像 |
+| 形态 | 建议条件 |
 |---|---|
-| 组装机 | 散件自装，无 OEM 预装 |
-| 品牌台式机 | 联想/戴尔/惠普/方正任一，带 OEM 预装软件 |
-| 笔记本 | 华硕/联想/机械革命/惠普任一，含双显卡机型优先 |
-| 一体机 | 台式平台 + 内置显示器 |
-| 老旧机器 | i3/i5-4xxx~7xxx + 机械盘 + Win10 |
+| 组装机 | 无 OEM 预装，核对机型默认值 |
+| 品牌台式机 | 联想、戴尔、惠普、方正等，保留 OEM 预装 |
+| 笔记本 | 华硕、联想、机械革命、惠普等，优先核显+独显 |
+| 一体机 | 内置显示器与外设共用平台 |
+| 旧机器 | i3/i5 第 4–7 代、机械盘、Windows 10 |
 
-## 差异测试项
+## 差异项
 
-| # | 需求 | Agent 调用 | Reviewer pwsh 核查 | 判据 |
-|---|---|---|---|---|
-| D01 | 厂商机型识别 | sys `overview` | `Win32_ComputerSystem/BIOS` 对数 | vendor/model 与实体铭牌一致；组装机可为空 |
-| D02 | OEM 预装自启 | startup 全量 | Run 键 + 服务交叉 | 第三方自启 path 指向非 System32 |
-| D03 | 双显卡判读 | sys `gpu` | `Win32_VideoController` 对数 | adapters 含 bus=PCI 实体卡；bus=ROOT/USB 判为虚拟 |
-| D04 | 一体机外设链 | driver `external` | `Win32_PnPEntity` 显示/USB 抽查 | 内置屏在清单或解释性说明 |
-| D05 | 机械盘 IO 特征 | sys `io` | `Get-Counter` 同盘对照 | busyPct/queueLen 语义正确；碎片化提示如实 |
-| D06 | 老旧驱动痕迹 | driver `problem` | 设备管理器状态码对照 | 异常设备带错误码原样透传 |
-| D07 | 老机器自启服务噪声 | startup 全量 | `Win32_Service` Auto 项计数 | 服务数与系统世代匹配，无报错 |
+| ID | 操作 | 独立核查 | 通过条件 |
+|---|---|---|---|
+| D01 | sys overview | ComputerSystem/BIOS 与铭牌 | vendor/model 有依据；组装机默认字符串或空值如实保留 |
+| D02 | startup | Run 键、服务配置、OEM 软件位置 | 预装自启不遗漏；不以 System32 内外单独判定厂商或可信度 |
+| D03 | sys gpu | VideoController 与设备管理器 | 双显卡和虚拟适配器列全；总线仅作线索，USB 不自动判为虚拟 |
+| D04 | driver external | 显示/USB 的 PnP 枚举 | 内置屏与设备是否列出有明确依据，不把列表等同外接设备全集 |
+| D05 | sys io，机械盘负载场景 | 同盘计数器与访问模式 | busyPct/queueLen 单位与语义一致；不凭低吞吐直接断言碎片或坏盘 |
+| D06 | driver problem | 设备管理器状态码 | 异常设备和原始错误码一致 |
+| D07 | startup，旧机器 | Win32_Service 的 Auto 项 | 条目与当前系统对照一致；不预设某代系统必须有多少服务 |
+
+无对应硬件的项目记为不适用；采集失败记明原因，不能按无硬件跳过。

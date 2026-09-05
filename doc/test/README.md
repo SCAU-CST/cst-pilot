@@ -1,98 +1,115 @@
-# 测试方法总纲
+# 测试指南
 
-覆盖 `Testlist.md` 全部环境的公共测试方法。各环境的差异项见同目录 `env-*.md`。
+本目录分开维护测试方法、环境覆盖和执行记录。**清单中的预期不是已验证结论**；只有带日期、环境和证据的记录才能说明某次验证结果。
 
-## 角色分工（交叉验证）
-
-| 角色 | 行为 |
+| 文档 | 用途 |
 |---|---|
-| Agent（邻居 pi 实例） | 只通过本项目工具回答，如实报告返回与 notice |
-| Reviewer（开发者/审查者） | 用自由 pwsh 命令核查同一场景，与 Agent 结果对照 |
+| [Testlist](Testlist.md) | 环境覆盖状态 |
+| [设备形态](env-desktop.md) | 组装机、品牌机、笔记本、一体机、旧机器 |
+| [操作系统](env-os.md) | Windows 10/11、裁剪镜像、本地化 |
+| [移动介质](env-media.md) | U 盘、移动硬盘、SD 卡及文件系统差异 |
+| [PE](env-pe.md) | 运行时、系统服务和只读介质的降级 |
+| [Testlog](Testlog.md) | 已执行的环境、结果、缺陷与未决项 |
 
-Reviewer 的 pwsh 命令不限于工具实现方式（可用 CIM、直读注册表、独立计时等），目的是独立取得第二份事实。两边结论冲突时，以 Reviewer 的独立核查为准并记录为工具缺陷。
+## 选择范围
 
-## 执行结构（每个环境相同）
+- **局部修复**：阅读相关代码，执行小脚本、参数边界或故障注入；记录未做的实机验证。
+- **环境验证**：执行 B01–B31 公共组，再执行该环境对应的差异项。不适用的项目写明原因。
+- **发布前覆盖**：根据 Testlist 补足目标环境，不把单台样机通过推广到全部设备或系统版本。
 
-1. **全量工具检测**：执行下表 B01–B31（六工具全部 scope）
-2. **环境差异项**：执行对应 `env-*.md` 的差异表
+本页是方法说明，不要求每次文档或代码修改都执行全量测试。
 
-## 全量工具检测组（B01–B31）
+## 执行与判定
 
-设备无关：判据为结构断言与自洽闭环，不预设机器数值，不要求特定硬件存在。`<Win>` = `%SystemRoot%`，`<Kit>` = 便携版自身目录，`<Sys>` = 系统盘，`<Vol>` = 便携版所在卷根。
+1. 记录工具版本/提交、系统版本、权限、硬件、启动介质及目标路径。
+2. Agent 仅通过项目工具采集；核查者通过独立 PowerShell、系统界面或计时取得对照证据。
+3. 对照同一对象、相近时间和相同单位。实时采样不能要求逐值相等；冲突先排除权限、口径、采样窗口和对象不同，再记录缺陷。
+4. 每项记录调用、关键返回、对照方法、结论和耗时。只读核查，不修改机主数据；需要拔插、准备大文件或调整环境的项目单独安排。
+5. 将结果追加到 Testlog；区分通过、预期降级、失败、未执行和不适用。
 
-**disk（7 条）**
+明确且符合设计的降级可以通过。崩溃、挂起、静默丢失错误、把未知数据当作正常值应判失败。硬件不存在本身不算失败，但必须与采集失败区分。
 
-| # | 调用 | 判据 |
+## 公共测试组 B01–B31
+
+调用栏使用简写，完整参数见 [工具文档](../tool/README.md)。`<Win>` 为系统 Windows 目录，`<Kit>` 为工具包目录，`<Sys>` 为系统盘符，`<Vol>` 为工具包所在卷根。
+
+### disk
+
+| ID | 调用 | 预期与对照重点 |
 |---|---|---|
-| B01 | `scope=space` 全卷 | 覆盖全部本地卷，free≤total，多文件系统字段正确 |
-| B02 | `info`（`<Kit>` 所在盘；无独立卷则并入 B01） | physicalDisks 与 volumes 对应，盘类型译名在枚举内 |
-| B03 | `health <Sys>` | 权限双分支均通过：非 admin → smart:null+notice；admin → 结构完整 |
-| B04 | `usage <Kit> top=10` | topDirs/topFiles/extAgg/staleFiles 齐全，量级与实际一致 |
-| B05 | `usage <Win>\WinSxS top=5` 连调两次 | 第二次显著更快（账本热态） |
-| B06 | `usage` 不存在路径 | 明确 error，不崩溃不挂起 |
-| B07 | `all`（组合 scope） | space+info+health 三块齐全 |
+| B01 | space，全卷 | 与可访问卷对照；free≤total，剩余 0 保留为 0 |
+| B02 | info，指定 Kit 所在盘 | volumes 仅目标卷；物理盘匹配关联。关联失败时全量物理盘须带明确说明 |
+| B03 | health，指定 Sys | 对照目标盘；保留可用数据和实际错误。分别验证普通/管理员权限，不预设普通权限必失败或管理员必有数据 |
+| B04 | usage，Kit，top=10 | WizTree 成功时四类表齐全；Node 降级仅有目录排行，来源和限制明确；大小与同口径统计相符 |
+| B05 | usage，Win/WinSxS，top=5，连续两次 | 记录冷/热耗时和结果量级；usage 仍会扫描，不要求第二次必然更快 |
+| B06 | usage，不存在路径 | 明确 error，不崩溃或挂起 |
+| B07 | all | space、info、health 均有结果或具体失败原因，成功数据不被其他失败吞掉 |
 
-**ls（3 条）**
+### ls
 
-| # | 调用 | 判据 |
+| ID | 调用 | 预期与对照重点 |
 |---|---|---|
-| B08 | `ls <Kit>\pwsh top=15` | 账本热路径秒回，omitted 正确 |
-| B09 | `ls <Win>\WinSxS top=10` | B05 建账后秒回；不同卷时即跨盘账本隔离验证 |
-| B10 | `ls <Vol>\` 盘根 | 盘根混合内容正常枚举 |
+| B08 | Kit/pwsh，top=15 | 大小排序、截断项数和 omitted 合计正确；未知大小保持 null |
+| B09 | Win/WinSxS，top=10 | B05 后验证已扫描路径复用；跨卷不串用缓存，记录耗时 |
+| B10 | Vol 卷根 | 文件和目录均可枚举；不可读项、预算停止和统计下界如实说明 |
 
-**sys（5 条）**
+### sys
 
-| # | 调用 | 判据 |
+| ID | 调用 | 预期与对照重点 |
 |---|---|---|
-| B11 | `overview` | cpu∈[0,100]，mem.used≤total，machine 结构齐全 |
-| B12 | `proc top=15` | 双采样差分；byCpu/byMem ≤15 条 |
-| B13 | `gpu` | adapters≥1；nvidia:null 合法；lhmGpu 仅无 N 卡时出现且可空 |
-| B14 | `sensor` | 结构正确，counterErrors 如实；传感器可空 |
-| B15 | `io` 连调两次 | 首调冷耗时记录，第二次更快 |
+| B11 | overview | 可用 CPU 值在 0–100；mem.used≤total；机型字段合理，采集失败有错误 |
+| B12 | proc，top=15 | byCpu/byMem 各不超过 15；按实际间隔计算，与同口径工作集/CPU 核查 |
+| B13 | gpu | adapters 与设备清单对照；gpuPct 不累加超 100；多卡分别返回；NVIDIA 缺失/失败允许 LHM 补充，数据源失败彼此独立 |
+| B14 | sensor | 结构和单位正确；允许无可读传感器，counterErrors 如实；低频率不直接判过热 |
+| B15 | io，连续两次 | 分别记录冷/热耗时；磁盘与进程指标口径清楚，不要求跨调用值或进程数相等 |
 
-**startup（1 条）**
+### startup
 
-| # | 调用 | 判据 |
+| ID | 调用 | 预期与对照重点 |
 |---|---|---|
-| B16 | 全量 | regItems/startupFolders/services 齐全，disabled 三态 |
+| B16 | startup，无参数 | 三类清单齐全或有具体采集错误；disabled 三态，按来源和类别核查同名项，不将 Run 状态套给 RunOnce |
 
-**driver（6 条）**
+### driver
 
-| # | 调用 | 判据 |
+| ID | 调用 | 预期与对照重点 |
 |---|---|---|
-| B17 | `problem` | 空清单合法，结构齐全 |
-| B18 | `core` | 网/蓝/音/显通道结构返回 |
-| B19 | `external` | USB/显示器结构返回 |
-| B20 | `find class=Net` → 取一台 deviceId 子串 → `find id=子串` | 原设备必命中（转义与双通道闭环） |
-| B21 | `find name+class` 双条件复查 B20 目标 | 结果 ⊆ 仅 name 结果集（AND 语义） |
-| B22 | `find` 无参数 | 明确报错"至少传一个" |
+| B17 | problem | 成功查询允许空数组；失败不能伪装无异常 |
+| B18 | core | 网络、蓝牙、音频、显示和服务/驱动字段可核对 |
+| B19 | external | 与 USB、蓝牙、显示和可移动存储枚举对照，不将全部条目认作外接 |
+| B20 | find class=Net → 取设备 ID 子串 → find id | 原设备命中；另覆盖只出现在 HardwareID 的子串及引号、反斜杠 |
+| B21 | find name+class | 结果是仅 name 结果的子集，验证 AND；名称按字面子串匹配 |
+| B22 | find，无条件 | 明确提示至少传一个条件 |
 
-**eventlog（9 条）**
+### eventlog
 
-| # | 调用 | 判据 |
+| ID | 调用 | 预期与对照重点 |
 |---|---|---|
-| B23 | `recent hours=48` | 时间倒序，counts 折叠完备 |
-| B24 | `boot kind=bluescreen` | span 字段存在，sum(counts.n)=total |
-| B25 | `crash` | 结构齐全，msg 含故障模块语义；空命中合法 |
-| B26 | `service` | SCM 白名单结构正确；7045 含义区分 |
-| B27 | `disk` | 7/11/51/129/153 等结构正确；空命中合法 |
-| B28 | `query ids=[41] logName=System top=20` | 通用 ID 查询完成，折叠完备；命中与否如实 |
-| B29 | `detail` 取 B23-B28 任一样本 recordId | id/provider/recordId 与样本一致（闭环） |
-| B30 | `security` | 非 admin：degraded:true+notice；admin：结构完整，双分支均通过 |
-| B31 | `security type=lockout`（或 logonFail） | type 过滤生效语义；空命中合法 |
+| B23 | recent，hours=48 | 时间倒序；counts 未截断时 sum(n)=total |
+| B24 | boot，kind=bluescreen | ID/提供程序范围正确；有样本时 firstTime/lastTime 对应样本首尾；空样本不要求时间字段 |
+| B25 | crash，再按 app 过滤 | 按提供程序/ID/级别配对；Information 级 WER 不漏报；消息过滤覆盖全部分组，空命中合法 |
+| B26 | service | SCM 故障清单正确；7045 新装服务属于 boot，不能误作服务运行失败 |
+| B27 | disk | 指定 ID 范围与 System 记录一致；空命中合法 |
+| B28 | query，ids=[41]，logName=System，top=20 | ID 查询、排序、截断与计数一致 |
+| B29 | detail，取 B23–B28 的 logName+recordId | id/provider/recordId 与样本一致；记录已轮转则如实未找到 |
+| B30 | security | 普通权限明确 degraded；管理员查询成功或返回实际错误，不能伪造空结果 |
+| B31 | security，type=lockout 或 logonFail | 仅对应 ID；有权限时空命中合法，无权限先报告降级 |
 
-## 通过标准与记录约定
+## 记录模板
 
-1. 每条记录：Agent 关键返回、Reviewer 核查值、一致/偏差结论、耗时
-2. 降级（notice/degradedFrom/degraded:true）不算失败，如实记录
-3. 硬件缺失（无独显/无蓝牙/无温度计）不算失败
-4. 只读原则：不修改机主数据；工具自身的账本与索引写入属正常行为
-5. 表格精简，细节写行下备注
+```markdown
+## YYYY-MM-DD · 环境名称
 
-## 已知缺陷跟踪
+- 版本/提交：
+- 系统、硬件、权限：
+- 启动介质与目标卷：
+- 范围及未执行项目：
 
-| 缺陷 | 状态 |
-|---|---|
-| FAT32 卷 disk usage 的 method 仍报 wiztree-mft | 已修复（2026-09-04，按卷类型标注，见 Notice.md） |
-| disk info 的 drive 参数未生效（返回全部盘，代码确认未实现） | 已修复（完整版双过滤：卷按盘符、物理盘按分区关联；e2e 13/13） |
-| eventlog crash 不区分 provider/level（VMware 1000 误报） | 已修复（Error 级硬滤 + atypical 软标注；真崩溃样本待测试机复核） |
+| ID | 调用与关键返回 | 独立核查 | 结论 | 耗时 |
+|---|---|---|---|---|
+
+### 缺陷与待查项
+
+记录复现条件、预期/实际差异及后续状态。
+```
+
+近期代码问题与修复映射见 [2026-09-05 审查报告](../review/2026-09-05-code-correctness.md)。历史实测通过与局部修复验证不能互相替代。

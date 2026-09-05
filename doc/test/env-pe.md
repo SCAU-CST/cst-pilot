@@ -1,32 +1,36 @@
-# 环境测试：PE 盘环境
+# PE 环境验证
 
-对应 Testlist「PE 盘环境」维度。最高风险环境：目标不是"全部通过"，而是**验证每一处不可用都表现为优雅降级（明确 error/notice），绝不崩溃、挂起或静默返回错误数据**。执行结构：① README 全量工具检测组 B01–B31；② 本文档差异项，逐条记录降级形态。
+PE 验证关注两件事：包内运行时能否启动，以及缺失能力能否明确降级。**当前系统是 PE，工具不会自动读取离线 Windows 的注册表、服务或事件日志。**
 
-## 建议测试机画像
+先尝试 [公共组 B01–B31](README.md#公共测试组-b01b31)，运行时不可用时停止依赖它的项目并记录阻塞；无需重复触发相同失败。
 
-| PE | 画像 |
+## 样本与前提
+
+选择 Win10/Win11 内核的微 PE、FirPE、优启通等第三方 PE，以及未额外注入驱动的官方 ADK WinPE。记录镜像版本、组件、权限、系统盘与离线目标卷。
+
+| 可能缺失或不同的部分 | 对工具的影响 |
 |---|---|
-| 微PE / FirPE / 优启通 | 任一主流第三方 PE，Win10/Win11 内核 |
-| 官方 ADK WinPE | 无注入驱动的基线（最小系统） |
+| WMI 服务或组件 | sys/driver/startup 等 CIM 采集可能失败 |
+| 事件日志服务或通道 | eventlog 可能不可用 |
+| 存储、网络模块 | disk info/health 等可能降级 |
+| PE 自身 HKLM/HKCU、用户目录 | startup 描述 PE，不描述机主的离线系统 |
+| 只读启动介质 | 临时 CSV 及 pi 其他运行状态写入可能失败 |
 
-## PE 特有风险（判读前提）
+这些是待核查条件，不预设所有 PE 的服务状态或权限完全相同。
 
-1. WMI 服务（WinMgmt）PE 默认关闭 → sys/driver/eventlog/startup 的 CIM 查询预期大面积失败
-2. 事件日志服务关闭 → eventlog 预期整体不可用
-3. PE 的 HKLM 是 PE 自身系统，非目标机系统 → startup 结果不指向机主系统，属预期语义
-4. 存储/网络 cmdlet 模块可能缺失 → disk info/health 降级
+## 差异项
 
-## 差异测试项
+| ID | 操作 | 独立核查 | 通过条件 |
+|---|---|---|---|
+| P01 | pi.cmd | 包内 node.exe --version | 启动或明确报错，不挂起 |
+| P02 | 调用需 pwsh 的工具 | 包内 pwsh 的 PSVersionTable | 运行或明确失败，不静默切换数据源 |
+| P03 | sys overview | 同环境独立 CIM 查询 | WMI 不可用时保留错误，不显示健康空结果 |
+| P04 | driver problem | 同环境独立 CIM 查询 | 同 P03 |
+| P05 | eventlog recent | 事件服务、通道与 Get-WinEvent | 不可用时明确原因，不伪造无事件 |
+| P06 | startup | PE 自身注册表和服务 | 数据与当前 PE 一致；报告须说明并非离线目标系统 |
+| P07 | disk usage，目标卷 | 当前权限、文件系统与独立统计 | 快速路径或降级有依据，不预设一定有 SYSTEM/MFT 权限 |
+| P08 | sys sensor | 可用模块、传感器和错误 | 允许无读数，错误来源明确 |
+| P09 | disk usage 后 ls，只读或写保护场景 | wiztree/tmp 可写性与实际失败返回 | 创建 CSV 失败可降级，无死循环、无陈旧缓存；另记录 pi 运行状态目录是否阻塞启动 |
+| P10 | 比较多个 PE 镜像 | 按工具/能力汇总结果 | 分开列出可用、降级、阻塞，注明镜像差异 |
 
-| # | 需求 | Agent 调用 | Reviewer pwsh 核查 | 判据 |
-|---|---|---|---|---|
-| P01 | node 运行时在 PE | pi.cmd 启动 | 独立跑 `node.exe --version` | 启动成功或明确报错，不挂起 |
-| P02 | 便携 pwsh 7 在 PE | 任一工具调用 | 独立跑 `pwsh.exe -c $PSVersionTable` | 同上 |
-| P03 | WMI 关闭下的 sys | sys `overview` | `Get-CimInstance` 独立验证失败 | 明确 error + 原因，不崩溃 |
-| P04 | WMI 关闭下的 driver | driver `problem` | 同上 | 同上 |
-| P05 | 事件日志关闭下的 eventlog | eventlog `recent` | `Get-WinEvent` 独立验证失败 | 同上 |
-| P06 | startup 的 PE 语义 | startup 全量 | 对照 PE 自身注册表 | 结果来自 PE 系统，如实说明非目标机 |
-| P07 | WizTree 在 PE | disk `usage <目标卷>` | `fsutil` / 独立扫描对照 | PE 默认 SYSTEM 权限下 MFT 路径可用性如实 |
-| P08 | lhm 在 PE | sys `sensor` | — | 传感器可空，counterErrors 如实 |
-| P09 | 账本与写入介质 | disk `usage` 后查 ls | 检查 `<Kit>\agent\home\fff` | PE 只读介质或写保护时不死循环，降级如实 |
-| P10 | 裁剪差异 | 三种 PE 互相对照 | — | 记录各 PE 通过/降级矩阵，归纳第三方 PE 共性 |
+只读介质、WMI 关闭等条件应在预先准备的测试环境中验证，不为本轮测试修改机主系统。结果记录到 [Testlog](Testlog.md)，不把“未崩溃”写成“功能完整支持”。
