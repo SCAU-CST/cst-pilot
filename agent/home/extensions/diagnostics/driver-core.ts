@@ -1,3 +1,7 @@
+import { type CoreResult, type DeviceRow, parseDriverResult } from "./driver-data.ts";
+import { collectionNotice, psString } from "./pwsh-data.ts";
+import { createPwshRunner, PWSH } from "./runtime.ts";
+
 /**
  * driver-core - 设备与驱动健康查询引擎（cst-pilot 定制，driver 工具的共享核心）
  *
@@ -29,65 +33,10 @@
  *   改为全枚举 + Node 侧对 deviceId/hardwareIds 双通道后置匹配
  */
 
-import { execFile } from "node:child_process";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { promisify } from "node:util";
-import { collectionNotice, diagnosticCommand, psString } from "./pwsh-data";
-
-const execFileP = promisify(execFile);
-
-const EXT_DIR = dirname(fileURLToPath(import.meta.url)); // .../agent/home/extensions
-const ROOT_DIR = join(EXT_DIR, "..", "..", ".."); // cst-pilot 根
 // 随包 pwsh 是产品契约（pi.cmd 严格 PATH 白名单 + zip 分发 pwsh\）。
 // CST_PILOT_PWSH 仅供开发机注入系统 pwsh（本仓库 checkout 不含 pwsh\ 时做直连验证），产品环境不用。
-const BUNDLED_PWSH = join(ROOT_DIR, "pwsh", "pwsh.exe");
-const PWSH = process.env.CST_PILOT_PWSH || BUNDLED_PWSH;
 
-/** 智能解码：PowerShell 错误输出可能按系统 ANSI 代码页（中文系统为 GBK）编码，
- *  正常输出为 UTF-8。先按 UTF-8 严格解码，失败则回退 GBK。 */
-function decodeBuffer(buf: Buffer | undefined): string {
-	if (!buf || buf.length === 0) return "";
-	try {
-		return new TextDecoder("utf-8", { fatal: true }).decode(buf);
-	} catch {
-		try {
-			return new TextDecoder("gbk").decode(buf);
-		} catch {
-			return buf.toString("latin1");
-		}
-	}
-}
-
-/** 去掉终端颜色/控制序列，避免乱码污染日志与模型上下文 */
-function stripAnsi(s: string): string {
-	// eslint-disable-next-line no-control-regex
-	return s.replace(/\u001b\[[0-9;]*[A-Za-z]/g, "").replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, "");
-}
-
-/** 与 disk.ts / sys.ts / eventlog-core.ts 同款：项目自带 pwsh 执行，JSON 解析，失败收敛为 { error }。 */
-export async function runPwsh(command: string, timeoutMs = 30000, pwshPath: string = PWSH): Promise<any> {
-	try {
-		const r = await execFileP(
-			pwshPath,
-			["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", diagnosticCommand(command)],
-			{ timeout: timeoutMs, windowsHide: true, encoding: "buffer", maxBuffer: 16 * 1024 * 1024 },
-		);
-		const stdout = decodeBuffer(r.stdout as Buffer);
-		const stderr = stripAnsi(decodeBuffer(r.stderr as Buffer)).trim();
-		if (!stdout.trim()) {
-			return { error: (stderr || "空输出").slice(0, 500) };
-		}
-		try {
-			return JSON.parse(stdout);
-		} catch {
-			return JSON.parse(stripAnsi(stdout));
-		}
-	} catch (e: any) {
-		const errStderr = e?.stderr ? stripAnsi(decodeBuffer(e.stderr as Buffer)).trim() : "";
-		return { error: (errStderr || String(e?.message ?? e)).slice(0, 500) };
-	}
-}
+const runPwsh = createPwshRunner({ timeoutMs: 30000, diagnostics: true, path: process.env.CST_PILOT_PWSH || PWSH });
 
 /* ------------------------------------------------------------------ */
 /* WQL 转义与白名单校验（注入防护：模型输入只进结构化字段）               */
@@ -186,79 +135,14 @@ $d = Get-CimInstance Win32_PnPEntity ${wql ? `-Filter ${psString(wql)}` : ""} |
 /* 采集与收敛                                                           */
 /* ------------------------------------------------------------------ */
 
-export interface CoreResult {
-	devices?: DeviceRow[];
-	count?: number;
-	removable?: RemovableRow[];
-	net?: NetRow[];
-	bluetooth?: PnpLiteRow[];
-	audio?: PnpLiteRow[];
-	display?: DisplayRow[];
-	services?: ServiceRow[];
-	drivers?: DriverRow[];
-	notice?: string;
-	error?: string;
-	degraded?: boolean;
-	collectionErrors?: unknown[];
-}
-
-export interface DeviceRow {
-	name: string | null;
-	class: string | null;
-	status: string | null;
-	errorCode: number | null;
-	deviceId: string | null;
-	hardwareIds: string[];
-}
-
-export interface RemovableRow {
-	model: string | null;
-	interface: string | null;
-	mediaType: string | null;
-	sizeGB: number | null;
-}
-
-export interface NetRow {
-	name: string | null;
-	connId: string | null;
-	physical: boolean;
-	connStatus: number | null;
-}
-
-export interface PnpLiteRow {
-	name: string | null;
-	status: string | null;
-	errorCode: number | null;
-}
-
-export interface DisplayRow {
-	name: string | null;
-	vendor: string | null;
-	driver: string | null;
-	status: string | null;
-	bus: string | null;
-}
-
-export interface ServiceRow {
-	name: string | null;
-	state: string | null;
-}
-
-export interface DriverRow {
-	class: string | null;
-	device: string | null;
-	version: string | null;
-	date: string | null;
-	provider: string | null;
-}
-
 /** 已知盲区（设计定稿，如实告知模型）：飞行模式/射频开关 WMI 读不到；
  *  网络打印机不走 PnP 枚举。设备全正常但功能异常时先排查这两处 */
 const NOTICE_BLINDSPOT =
 	"盲区：飞行模式/射频开关状态与网络打印机不在 WMI/CIM 能力内，设备全正常但功能异常时先排查这两处";
 
-export async function collectProblem(): Promise<CoreResult> {
-	const r = await runPwsh(CMD_PROBLEM);
+export async function collectProblem(signal?: AbortSignal): Promise<CoreResult> {
+	signal?.throwIfAborted();
+	const r = parseDriverResult(await runPwsh(CMD_PROBLEM, { signal }));
 	if (r.error) return { error: r.error };
 	return {
 		devices: r.devices ?? [],
@@ -269,8 +153,9 @@ export async function collectProblem(): Promise<CoreResult> {
 	};
 }
 
-export async function collectExternal(): Promise<CoreResult> {
-	const r = await runPwsh(CMD_EXTERNAL);
+export async function collectExternal(signal?: AbortSignal): Promise<CoreResult> {
+	signal?.throwIfAborted();
+	const r = parseDriverResult(await runPwsh(CMD_EXTERNAL, { signal }));
 	if (r.error) return { error: r.error };
 	return {
 		devices: r.devices ?? [],
@@ -281,8 +166,9 @@ export async function collectExternal(): Promise<CoreResult> {
 	};
 }
 
-export async function collectCore(): Promise<CoreResult> {
-	const r = await runPwsh(CMD_CORE);
+export async function collectCore(signal?: AbortSignal): Promise<CoreResult> {
+	signal?.throwIfAborted();
+	const r = parseDriverResult(await runPwsh(CMD_CORE, { signal }));
 	if (r.error) return { error: r.error };
 	return {
 		net: r.net ?? [],
@@ -299,7 +185,8 @@ export async function collectCore(): Promise<CoreResult> {
 
 /** find：条件 AND 组合，至少传一个。id 双通道匹配（deviceId 或 hardwareIds
  *  任一包含子串，忽略大小写）——WQL LIKE 不支持数组属性，无法下推 */
-export async function collectFind(raw: FindCond): Promise<CoreResult> {
+export async function collectFind(raw: FindCond, signal?: AbortSignal): Promise<CoreResult> {
+	signal?.throwIfAborted();
 	const name = typeof raw.name === "string" ? raw.name.trim() : undefined;
 	const klass = typeof raw.class === "string" ? raw.class.trim() : undefined;
 	const id = typeof raw.id === "string" ? raw.id.trim() : undefined;
@@ -310,7 +197,7 @@ export async function collectFind(raw: FindCond): Promise<CoreResult> {
 	if (klass && !RE_CLASS.test(klass)) return { error: "class 只接受固定英文类名（≤40 字符，字母数字 ._ -）" };
 	if (id && !RE_ID.test(id)) return { error: "id 含非法字符或超长（≤200 字符）" };
 
-	const r = await runPwsh(buildFindCmd({ name, class: klass, id }));
+	const r = parseDriverResult(await runPwsh(buildFindCmd({ name, class: klass, id }), { signal }));
 	if (r.error) return { error: r.error };
 	let devices: DeviceRow[] = r.devices ?? [];
 	if (name) devices = devices.filter((d) => (d.name ?? "").toLowerCase().includes(name.toLowerCase()));
@@ -337,25 +224,25 @@ export async function collectFind(raw: FindCond): Promise<CoreResult> {
 
 export const SCOPES = ["problem", "core", "external", "find"] as const;
 
-/** 空 factory：pi 把 extensions 目录下每个 .ts 都当扩展加载，
- *  共享模块导出空函数让加载器安静（同 eventlog-core / wz-index，见 doc/tool/README.md） */
-export default function () {}
-
-export async function runScope(raw: Record<string, unknown>): Promise<CoreResult> {
+export async function runScope(raw: Record<string, unknown>, signal?: AbortSignal): Promise<CoreResult> {
+	signal?.throwIfAborted();
 	const scope = typeof raw?.scope === "string" ? raw.scope : "problem";
 	switch (scope) {
 		case "problem":
-			return collectProblem();
+			return collectProblem(signal);
 		case "core":
-			return collectCore();
+			return collectCore(signal);
 		case "external":
-			return collectExternal();
+			return collectExternal(signal);
 		case "find":
-			return collectFind({
-				name: typeof raw.name === "string" ? raw.name : undefined,
-				class: typeof raw.class === "string" ? raw.class : undefined,
-				id: typeof raw.id === "string" ? raw.id : undefined,
-			});
+			return collectFind(
+				{
+					name: typeof raw.name === "string" ? raw.name : undefined,
+					class: typeof raw.class === "string" ? raw.class : undefined,
+					id: typeof raw.id === "string" ? raw.id : undefined,
+				},
+				signal,
+			);
 		default:
 			return { error: `未知 scope: ${scope}（当前支持 ${SCOPES.join(" / ")}）` };
 	}

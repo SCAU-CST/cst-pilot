@@ -1,3 +1,6 @@
+import { psString } from "./pwsh-data.ts";
+import { asRecord, asRecords, createPwshRunner, errorMessage, PWSH } from "./runtime.ts";
+
 /**
  * eventlog-core - 事件日志查询引擎（cst-pilot 定制，eventlog 工具的共享核心）
  *
@@ -41,73 +44,10 @@
  *   消息子串用 IndexOf OrdinalIgnoreCase（无正则，零回溯风险）
  */
 
-import { execFile } from "node:child_process";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { promisify } from "node:util";
-import { psString } from "./pwsh-data";
-
-const execFileP = promisify(execFile);
-
-const EXT_DIR = dirname(fileURLToPath(import.meta.url)); // .../agent/home/extensions
-const ROOT_DIR = join(EXT_DIR, "..", "..", ".."); // cst-pilot 根
 // 随包 pwsh 是产品契约（pi.cmd 严格 PATH 白名单 + zip 分发 pwsh\）。
 // CST_PILOT_PWSH 仅供开发机注入系统 pwsh（本仓库 checkout 不含 pwsh\ 时做直连验证），产品环境不用。
-const BUNDLED_PWSH = join(ROOT_DIR, "pwsh", "pwsh.exe");
-const PWSH = process.env.CST_PILOT_PWSH || BUNDLED_PWSH;
 
-/** 智能解码：PowerShell 错误输出可能按系统 ANSI 代码页（中文系统为 GBK）编码，
- *  正常输出为 UTF-8。先按 UTF-8 严格解码，失败则回退 GBK。 */
-function decodeBuffer(buf: Buffer | undefined): string {
-	if (!buf || buf.length === 0) return "";
-	try {
-		return new TextDecoder("utf-8", { fatal: true }).decode(buf);
-	} catch {
-		try {
-			return new TextDecoder("gbk").decode(buf);
-		} catch {
-			return buf.toString("latin1");
-		}
-	}
-}
-
-/** 去掉终端颜色/控制序列，避免乱码污染日志与模型上下文 */
-function stripAnsi(s: string): string {
-	// eslint-disable-next-line no-control-regex
-	return s.replace(/\u001b\[[0-9;]*[A-Za-z]/g, "").replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, "");
-}
-
-/** 与 disk.ts / sys.ts 同款：项目自带 pwsh 执行，JSON 解析，失败收敛为 { error }。
- *  第三参数 pwshPath 仅供直连 harness 注入测试路径（如不存在路径验证收敛行为）。 */
-export async function runPwsh(command: string, timeoutMs = 30000, pwshPath: string = PWSH): Promise<any> {
-	try {
-		const r = await execFileP(
-			pwshPath,
-			[
-				"-NoProfile",
-				"-NonInteractive",
-				"-ExecutionPolicy",
-				"Bypass",
-				"-Command",
-				"[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false);\n" + command,
-			],
-			{ timeout: timeoutMs, windowsHide: true, encoding: "buffer", maxBuffer: 16 * 1024 * 1024 },
-		);
-		const stdout = decodeBuffer(r.stdout as Buffer);
-		const stderr = stripAnsi(decodeBuffer(r.stderr as Buffer)).trim();
-		if (!stdout.trim()) {
-			return { error: (stderr || "空输出").slice(0, 500) };
-		}
-		try {
-			return JSON.parse(stdout);
-		} catch {
-			return JSON.parse(stripAnsi(stdout));
-		}
-	} catch (e: any) {
-		const errStderr = e?.stderr ? stripAnsi(decodeBuffer(e.stderr as Buffer)).trim() : "";
-		return { error: (errStderr || String(e?.message ?? e)).slice(0, 500) };
-	}
-}
+const runPwsh = createPwshRunner({ timeoutMs: 30000, path: process.env.CST_PILOT_PWSH || PWSH });
 
 /* ------------------------------------------------------------------ */
 /* 参数白名单校验（注入防护：模型输入只进结构化字段，逐个白名单校验）      */
@@ -131,11 +71,6 @@ export interface CoreQuery {
 	providers?: string[]; // 提供程序精确名（下推）
 	msgLike?: string; // 后置过滤：消息子串（不区分大小写 IndexOf，无正则回溯风险）
 	providerRe?: string; // 后置过滤：提供程序正则（.NET regex，1s 超时）
-}
-
-/** 字符串插值进 pwsh 单引号字面量的转义（白名单已挡住引号，此处兜底防御） */
-function pwshSingleQuote(s: string): string {
-	return psString(s);
 }
 
 function asInt(v: unknown): number | null {
@@ -209,7 +144,12 @@ export function buildSpec(raw: {
 }
 
 function finalize(
-	q: Omit<CoreQuery, "ids" | "msgLike" | "providerRe"> & { ids?: unknown; msgLike?: unknown; providerRe?: unknown },
+	q: Omit<CoreQuery, "ids" | "providers" | "msgLike" | "providerRe"> & {
+		ids?: unknown;
+		providers?: unknown;
+		msgLike?: unknown;
+		providerRe?: unknown;
+	},
 ): CoreQuery {
 	let ids: number[] | undefined;
 	if (q.ids !== undefined && q.ids !== null) {
@@ -303,11 +243,11 @@ export function buildEventQueryCmd(specs: CoreQuery | CoreQuery[]): string {
 	// 各组 FilterHashtable：结构化下推，模型输入只出现在白名单校验后的结构化字段
 	lines.push("$groups = @(");
 	for (const s of list) {
-		const f: string[] = [`LogName = @(${s.logNames.map(pwshSingleQuote).join(",")})`];
+		const f: string[] = [`LogName = @(${s.logNames.map(psString).join(",")})`];
 		if (s.level === "warn") f.push("Level = @(1,2,3)"); // Warning 及更严重
 		if (s.level === "error") f.push("Level = @(1,2)"); // Error 及更严重
 		if (s.ids) f.push(`Id = @(${s.ids.join(",")})`);
-		if (s.providers) f.push(`ProviderName = @(${s.providers.map(pwshSingleQuote).join(",")})`);
+		if (s.providers) f.push(`ProviderName = @(${s.providers.map(psString).join(",")})`);
 		f.push(`StartTime = (Get-Date).AddHours(-${s.hours})`);
 		lines.push(`  @{ ${f.join("; ")} }`);
 	}
@@ -447,7 +387,8 @@ export interface CoreResultData {
 	admin: boolean; // 查询进程是否管理员（security 降级判定用）
 	events: CoreEvent[]; // 最新 top 条，时间倒序
 	firstTime?: string; // 事件样本最早时间（events 末条），空列表时无此字段；日志被刷屏滚没时样本跨度会远小于 hours 窗口
-	lastTime?: string; // 事件样本最新时间（events 首条）	counts: CountRow[]; // 来源/ID 折叠计数表，n 降序
+	lastTime?: string; // 事件样本最新时间（events 首条）
+	counts: CountRow[]; // 来源/ID 折叠计数表，n 降序
 	countsTruncated: boolean;
 }
 
@@ -485,16 +426,19 @@ export function truncateBrief(msg: unknown, max = MSG_MAX): string | null {
 /** 核心查询：spec 归一化（单组或数组=多组 OR）→ 下推执行 → 收敛为 { data, notice } 或 { error } */
 export async function queryEvents(
 	raw: Parameters<typeof buildSpec>[0] | Parameters<typeof buildSpec>[0][],
+	signal?: AbortSignal,
 ): Promise<CoreResult> {
+	signal?.throwIfAborted();
 	const raws = Array.isArray(raw) ? raw : [raw];
 	let specs: CoreQuery[];
 	try {
 		specs = raws.map((r) => buildSpec(r));
-	} catch (e: any) {
-		return { error: String(e?.message ?? e).slice(0, 300) };
+	} catch (e) {
+		signal?.throwIfAborted();
+		return { error: errorMessage(e).slice(0, 300) };
 	}
 
-	const r = await runPwsh(buildEventQueryCmd(specs));
+	const r = asRecord(await runPwsh(buildEventQueryCmd(specs), { signal }));
 	if (r && typeof r.error === "string") return { error: r.error };
 	if (!r || typeof r.total !== "number" || !Array.isArray(r.events) || !Array.isArray(r.counts)) {
 		return { error: "事件日志查询返回结构异常" };
@@ -513,7 +457,7 @@ export async function queryEvents(
 		};
 	}
 
-	const events: CoreEvent[] = (r.events as any[]).map((e) => {
+	const events: CoreEvent[] = asRecords(r.events).map((e) => {
 		const lv = Number(e.level ?? 0);
 		return {
 			logName: String(e.logName ?? ""),
@@ -527,7 +471,7 @@ export async function queryEvents(
 		};
 	});
 
-	const counts: CountRow[] = (r.counts as any[]).map((c) => ({
+	const counts: CountRow[] = asRecords(r.counts).map((c) => ({
 		key: `${c.prov}/${c.id}`,
 		provider: String(c.prov ?? ""),
 		id: Number(c.id ?? 0),
@@ -629,13 +573,14 @@ export type ScopeName = (typeof SCOPES)[number];
 
 let adminCache: boolean | null = null;
 
-export async function isAdminPwsh(): Promise<boolean> {
+export async function isAdminPwsh(signal?: AbortSignal): Promise<boolean> {
+	signal?.throwIfAborted();
 	if (adminCache !== null) return adminCache;
 	const r = await runPwsh(
 		"ConvertTo-Json ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)",
-		10000,
+		{ timeoutMs: 10000, signal },
 	);
-	if (typeof r !== "boolean") throw new Error(`管理员身份探测失败: ${r?.error ?? "返回结构异常"}`);
+	if (typeof r !== "boolean") throw new Error(`管理员身份探测失败: ${asRecord(r).error ?? "返回结构异常"}`);
 	adminCache = r;
 	return adminCache;
 }
@@ -657,11 +602,11 @@ export function buildDetailCmd(spec: { logName: string; recordId?: number; id?: 
 		// XPath 元素名是 EventRecordID（PS 属性叫 RecordId）；模板写死，仅插入整数
 		// 校验后的 recordId —— 与 FilterHashtable 插值同等级的安全模型
 		lines.push(
-			`$rec = Get-WinEvent -LogName ${pwshSingleQuote(spec.logName)} -FilterXPath '*[System[(EventRecordID=${spec.recordId})]]' -MaxEvents 1`,
+			`$rec = Get-WinEvent -LogName ${psString(spec.logName)} -FilterXPath '*[System[(EventRecordID=${spec.recordId})]]' -MaxEvents 1`,
 		);
 	} else {
 		lines.push(
-			`$rec = Get-WinEvent -FilterHashtable @{ LogName = ${pwshSingleQuote(spec.logName)}; Id = ${spec.id} } -MaxEvents 1`,
+			`$rec = Get-WinEvent -FilterHashtable @{ LogName = ${psString(spec.logName)}; Id = ${spec.id} } -MaxEvents 1`,
 		);
 	}
 	lines.push("$unreadable = 0");
@@ -696,11 +641,15 @@ export interface DetailCoreResult {
 	admin?: boolean;
 }
 
-export async function queryDetail(raw: {
-	logName?: unknown;
-	recordId?: unknown;
-	id?: unknown;
-}): Promise<DetailCoreResult> {
+export async function queryDetail(
+	raw: {
+		logName?: unknown;
+		recordId?: unknown;
+		id?: unknown;
+	},
+	signal?: AbortSignal,
+): Promise<DetailCoreResult> {
+	signal?.throwIfAborted();
 	let logName: string;
 	let recordId: number | undefined;
 	let id: number | undefined;
@@ -726,11 +675,12 @@ export async function queryDetail(raw: {
 			}
 			id = n;
 		}
-	} catch (e: any) {
-		return { error: String(e?.message ?? e).slice(0, 300) };
+	} catch (e) {
+		signal?.throwIfAborted();
+		return { error: errorMessage(e).slice(0, 300) };
 	}
 
-	const r = await runPwsh(buildDetailCmd({ logName, recordId, id }));
+	const r = asRecord(await runPwsh(buildDetailCmd({ logName, recordId, id }), { signal }));
 	if (r && typeof r.error === "string") return { error: r.error };
 	if (!r || typeof r.found !== "boolean") return { error: "事件详情返回结构异常" };
 
@@ -738,7 +688,7 @@ export async function queryDetail(raw: {
 		? r.structural.filter((s: unknown) => typeof s === "string" && s.trim())
 		: [];
 	if (r.found === true) {
-		const ev = (r as any).ev ?? {};
+		const ev = asRecord(r.ev ?? {});
 		const lv = Number(ev.level ?? 0);
 		const msg = typeof ev.msg === "string" ? ev.msg : null;
 		const cut = !!r.cut;
@@ -805,13 +755,15 @@ function payload(r: CoreResult, prefix?: string): Record<string, unknown> {
 	return { ...(r.data as object), notice: (prefix ?? "") + (r.notice ?? "") };
 }
 
-export async function runScope(params: ScopeParams): Promise<Record<string, unknown>> {
+export async function runScope(params: ScopeParams, signal?: AbortSignal): Promise<Record<string, unknown>> {
+	signal?.throwIfAborted();
 	const scope = typeof params.scope === "string" ? params.scope : "recent"; // 无 scope 兜底 recent
 	const { hours, top } = params;
 	try {
-		return await routeScope(scope, params, hours, top);
-	} catch (e: any) {
-		return { error: String(e?.message ?? e).slice(0, 300) };
+		return await routeScope(scope, params, hours, top, signal);
+	} catch (e) {
+		signal?.throwIfAborted();
+		return { error: errorMessage(e).slice(0, 300) };
 	}
 }
 
@@ -820,15 +772,20 @@ async function routeScope(
 	params: ScopeParams,
 	hours: unknown,
 	top: unknown,
+	signal?: AbortSignal,
 ): Promise<Record<string, unknown>> {
+	signal?.throwIfAborted();
 	switch (scope) {
 		case "recent": {
-			const r = await queryEvents({
-				logNames: ["System", "Application"],
-				level: params.level ?? "warn",
-				hours,
-				top,
-			});
+			const r = await queryEvents(
+				{
+					logNames: ["System", "Application"],
+					level: params.level ?? "warn",
+					hours,
+					top,
+				},
+				signal,
+			);
 			return payload(r);
 		}
 		case "boot": {
@@ -854,7 +811,7 @@ async function routeScope(
 					: kind === "bluescreen"
 						? "蓝屏详情 1001（BugCheck）+ WHEA-Logger 硬件错误"
 						: "启停标记 12/13/6005/6006/6009；意外重启 41/6008；蓝屏 1001；重启原因 1074/19/7045；WHEA-Logger 硬件错误";
-			const r = await queryEvents(groups);
+			const r = await queryEvents(groups, signal);
 			const out = payload(r, `boot(kind=${kind})：白名单=${desc}。`);
 			if (!out.error) out.kind = kind;
 			return out;
@@ -892,7 +849,7 @@ async function routeScope(
 				},
 				{ logNames: ["Application"], ids: CRASH_IDS_ANY, providers: ["SideBySide"], msgLike: app, hours, top },
 			];
-			const r = await queryEvents(groups);
+			const r = await queryEvents(groups, signal);
 			const out = payload(
 				r,
 				`crash：白名单=崩溃 1000 / WER 1001 / 无响应 1002 / .NET Runtime 1026（按提供程序限定；WER/无响应保留原始级别）/ SideBySide 33·35（不限级别）。${app ? `app 过滤=「${app}」（消息子串，不区分大小写）。` : ""}atypical=true=provider 非典型崩溃来源，请人工判读。`,
@@ -901,6 +858,7 @@ async function routeScope(
 				// 软标注：Error 级命中里 provider 不属于典型崩溃来源的，标出来请人工判读
 				const typical = new Set(CRASH_TYPICAL_PROVIDERS.map((p) => p.toLowerCase()));
 				for (const ev of ((out.events as CoreEvent[]) ?? []) as (CoreEvent & { atypical?: boolean })[]) {
+					signal?.throwIfAborted();
 					if (!typical.has(ev.provider.toLowerCase())) ev.atypical = true;
 				}
 			}
@@ -909,7 +867,7 @@ async function routeScope(
 		}
 		case "service": {
 			const name = optStr(params.name, "name");
-			const r = await queryEvents({ logNames: ["System"], ids: SERVICE_IDS, msgLike: name, hours, top });
+			const r = await queryEvents({ logNames: ["System"], ids: SERVICE_IDS, msgLike: name, hours, top }, signal);
 			const out = payload(
 				r,
 				`service：白名单=SCM 启动失败 7000-7003 / 账户密码 7013·7038·7041 / 超时挂起 7009·7011·7022 / 异常终止 7023·7024·7031·7032·7034 / 未正常关闭 7043 / 驱动加载 7025·7026。${name ? `name 过滤=「${name}」（消息子串，不区分大小写）。` : ""}`,
@@ -918,7 +876,7 @@ async function routeScope(
 			return out;
 		}
 		case "disk": {
-			const r = await queryEvents({ logNames: ["System"], ids: DISK_IDS, hours, top });
+			const r = await queryEvents({ logNames: ["System"], ids: DISK_IDS, hours, top }, signal);
 			return payload(
 				r,
 				"disk：白名单=坏块/控制器/分页 7·11·51 / 超时重试 129·153 / Ntfs 损坏/写失败 55·98·50·140 / 掉盘 157。",
@@ -931,7 +889,7 @@ async function routeScope(
 			}
 			// 非管理员时 FilterHashtable 查 Security 会静默返回 0 条（实测），
 			// 必须显式预检降级，否则「没权限」会伪装成「没有登录事件」
-			const admin = await isAdminPwsh();
+			const admin = await isAdminPwsh(signal);
 			if (!admin) {
 				return {
 					admin: false,
@@ -941,7 +899,7 @@ async function routeScope(
 						"security 需要管理员权限：当前以非管理员运行，Security 日志不可读，未执行查询。以管理员身份重启 pi 后可用（type=all / logonFail / lockout）。",
 				};
 			}
-			const r = await queryEvents({ logNames: ["Security"], ids: SECURITY_IDS[type], hours, top });
+			const r = await queryEvents({ logNames: ["Security"], ids: SECURITY_IDS[type], hours, top }, signal);
 			const out = payload(
 				r,
 				`security(type=${type})：白名单=成功登录 4624 / 登录失败 4625 / 账户锁定 4740（域环境 Kerberos 失败不在覆盖范围）。`,
@@ -956,15 +914,18 @@ async function routeScope(
 			const logName = optStr(params.logName, "logName");
 			const provider = optStr(params.provider, "provider");
 			const msg = optStr(params.msg, "msg");
-			const r = await queryEvents({
-				logNames: logName ? [logName] : ["System", "Application"],
-				level: params.level,
-				ids: params.ids,
-				providerRe: provider,
-				msgLike: msg,
-				hours,
-				top,
-			});
+			const r = await queryEvents(
+				{
+					logNames: logName ? [logName] : ["System", "Application"],
+					level: params.level,
+					ids: params.ids,
+					providerRe: provider,
+					msgLike: msg,
+					hours,
+					top,
+				},
+				signal,
+			);
 			const bits: string[] = [logName ? `通道=${logName}` : "通道=System+Application"];
 			if (params.level) bits.push(`level=${String(params.level)}`);
 			if (params.ids !== undefined) bits.push("ids 下推");
@@ -973,7 +934,7 @@ async function routeScope(
 			return payload(r, `query：自定义查询（${bits.join("；")}）。`);
 		}
 		case "detail": {
-			const r = await queryDetail({ logName: params.logName, recordId: params.recordId, id: params.id });
+			const r = await queryDetail({ logName: params.logName, recordId: params.recordId, id: params.id }, signal);
 			if (r.error) return { error: r.error };
 			if (r.data?.found) {
 				const { found, ...ev } = r.data as { found: boolean } & Record<string, unknown>;
@@ -987,6 +948,3 @@ async function routeScope(
 }
 
 /** pi 加载器会自动加载 extensions\ 下所有 .ts；共享模块用空 factory 保持安静（wz-index 同款）。 */
-export default function () {
-	/* 共享核心，无注册行为；工具注册在 eventlog.ts（里程碑 3 起） */
-}

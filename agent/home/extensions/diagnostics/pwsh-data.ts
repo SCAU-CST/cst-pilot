@@ -27,7 +27,7 @@ try {
 `;
 }
 
-export function collectionNotice(result: any): string {
+export function collectionNotice(result: { degraded?: unknown }): string {
 	return result?.degraded ? "部分采集失败，空值/空清单不代表正常或没有设备；请结合返回的错误字段判断。" : "";
 }
 
@@ -88,5 +88,3 @@ function Get-DiagnosticCounter([string]$object, [string[]]$counter) {
   Get-Counter -Counter $paths -ErrorAction Stop
 }
 `;
-
-export default function () {}

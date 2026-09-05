@@ -1,3 +1,9 @@
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { Type } from "typebox";
+import { collectionNotice } from "./pwsh-data.ts";
+import { diagnosticResult, OUTPUT_GUIDELINE, throwOnError } from "./result.ts";
+import { asRecord, asRecords, createPwshRunner } from "./runtime.ts";
+
 /**
  * startup - 只读开机自启盘点工具（cst-pilot 定制）
  *
@@ -14,63 +20,7 @@
  *   首字节奇数 = 已禁用；已禁用项不会开机拉起，如实标注避免误报
  */
 
-import { execFile } from "node:child_process";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { promisify } from "node:util";
-import { Type } from "typebox";
-import { collectionNotice, diagnosticCommand } from "./pwsh-data";
-
-const execFileP = promisify(execFile);
-
-const EXT_DIR = dirname(fileURLToPath(import.meta.url)); // .../agent/home/extensions
-const ROOT_DIR = join(EXT_DIR, "..", "..", ".."); // cst-pilot 根
-const PWSH = join(ROOT_DIR, "pwsh", "pwsh.exe");
-
-/** 智能解码：PowerShell 错误输出可能按系统 ANSI 代码页（中文系统为 GBK）编码，
- *  正常输出为 UTF-8。先按 UTF-8 严格解码，失败则回退 GBK。 */
-function decodeBuffer(buf: Buffer | undefined): string {
-	if (!buf || buf.length === 0) return "";
-	try {
-		return new TextDecoder("utf-8", { fatal: true }).decode(buf);
-	} catch {
-		try {
-			return new TextDecoder("gbk").decode(buf);
-		} catch {
-			return buf.toString("latin1");
-		}
-	}
-}
-
-/** 去掉终端颜色/控制序列，避免乱码污染日志与模型上下文 */
-function stripAnsi(s: string): string {
-	// eslint-disable-next-line no-control-regex
-	return s.replace(/\u001b\[[0-9;]*[A-Za-z]/g, "").replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, "");
-}
-
-/** 与 disk.ts / sys.ts 同款：项目自带 pwsh 执行，JSON 解析，失败收敛为 { error } */
-async function runPwsh(command: string, timeoutMs = 20000): Promise<any> {
-	try {
-		const r = await execFileP(
-			PWSH,
-			["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", diagnosticCommand(command)],
-			{ timeout: timeoutMs, windowsHide: true, encoding: "buffer", maxBuffer: 16 * 1024 * 1024 },
-		);
-		const stdout = decodeBuffer(r.stdout as Buffer);
-		const stderr = stripAnsi(decodeBuffer(r.stderr as Buffer)).trim();
-		if (!stdout.trim()) {
-			return { error: (stderr || "空输出").slice(0, 500) };
-		}
-		try {
-			return JSON.parse(stdout);
-		} catch {
-			return JSON.parse(stripAnsi(stdout));
-		}
-	} catch (e: any) {
-		const errStderr = e?.stderr ? stripAnsi(decodeBuffer(e.stderr as Buffer)).trim() : "";
-		return { error: (errStderr || String(e?.message ?? e)).slice(0, 500) };
-	}
-}
+const runPwsh = createPwshRunner({ timeoutMs: 20000, diagnostics: true });
 
 /* ------------------------------------------------------------------ */
 /* 自启盘点：注册表 Run 键 + 启动文件夹 + 自启服务，一条 pwsh 命令内取全  */
@@ -145,12 +95,13 @@ $svc = @(Get-CimInstance Win32_Service -Filter "StartMode='Auto'" | Sort-Object 
 ConvertTo-Json @{ regItems = $reg; startupFolders = $folders; services = $svc } -Depth 4
 `;
 
-async function collectStartup(): Promise<any> {
-	const r = await runPwsh(STARTUP_CMD);
+async function collectStartup(signal?: AbortSignal): Promise<Record<string, unknown>> {
+	signal?.throwIfAborted();
+	const r = asRecord(await runPwsh(STARTUP_CMD, { signal }));
 	if (r && typeof r.error === "string") return { error: r.error };
-	const regCount = Array.isArray(r.regItems) ? r.regItems.length : 0;
+	const regItems = asRecords(r.regItems ?? []);
 	const svcCount = Array.isArray(r.services) ? r.services.length : 0;
-	const disabledCount = regCount > 0 ? r.regItems.filter((x: any) => x.disabled).length : 0;
+	const disabledCount = regItems.filter((item) => item.disabled === true).length;
 	return {
 		...r,
 		notice:
@@ -166,26 +117,29 @@ async function collectStartup(): Promise<any> {
 
 /* ------------------------------------------------------------------ */
 
-export default function (pi: any) {
+export default function registerStartup(pi: ExtensionAPI) {
 	pi.registerTool({
 		name: "startup",
 		label: "Startup Audit",
 		description:
-			"盘点开机自启项（只读，一次调用取全）：注册表 Run/RunOnce 自启项（HKLM/HKCU/Wow6432Node，含任务管理器禁用状态）、启动文件夹（当前用户+所有用户）、自启服务列表（StartMode=Auto，含延迟自启，运行中的排前面）。用于回答'开机都拉起了什么''为什么开机慢''开机后什么在后台跑'。",
+			"盘点开机自启项（只读，一次调用取全）：注册表 Run/RunOnce 自启项（HKLM/HKCU/Wow6432Node，含任务管理器禁用状态）、启动文件夹（当前用户+所有用户）、自启服务列表（StartMode=Auto，含延迟自启，运行中的排前面）。用于回答'开机都拉起了什么''为什么开机慢''开机后什么在后台跑'。" +
+			" 输出 JSON 最多 50 KiB，超限标注 outputTruncated；请缩小查询范围获取省略内容。",
 		promptSnippet:
 			"Audit boot autostart entries: registry Run keys, startup folders, auto-start services (read-only)",
 		promptGuidelines: [
+			OUTPUT_GUIDELINE,
 			"Use startup when the user asks what launches at boot, what runs in the background after startup, or why booting is slow.",
 			"Combine with sys scope=proc when diagnosing slowness AFTER boot: startup explains what gets launched, sys shows what is actually consuming resources now.",
 		],
 		parameters: Type.Object({}),
 
-		async execute(_toolCallId: string) {
-			const result: any = { startup: await collectStartup() };
-			return {
-				content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-				details: result,
-			};
+		async execute(_toolCallId, _params, signal, _onUpdate, _ctx) {
+			signal?.throwIfAborted();
+			const startup = await collectStartup(signal);
+			throwOnError(startup);
+			const result = { startup };
+			signal?.throwIfAborted();
+			return diagnosticResult(result);
 		},
 	});
 }
