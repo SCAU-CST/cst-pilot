@@ -20,7 +20,7 @@ AGENTS.md，而是放在 `agent\home\APPEND_SYSTEM.md`——pi 内置的追加�
 ## 模型上下文与 TUI 渲染使用不同的数据
 
 模型只读 `content[0].text`；`details` 仅用于 TUI 渲染，不进模型上下文，
-模型消费的信息必须完整落在 `data / notice / error` 三个约定键里。
+模型消费的信息必须出现在 content 的结果字段与降级说明里；整次失败由 pi 捕获抛错并标记 isError。
 详见 [doc\tool\README.md](tool/README.md)「返回结构」。
 
 ## pi.cmd 保持纯 ASCII

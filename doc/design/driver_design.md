@@ -20,7 +20,7 @@ driver 判断设备识别与状态；sys 处理负载和传感器，disk 处理�
 
 ## 采集结构
 
-[driver.ts](../../agent/home/extensions/driver.ts) 负责注册和参数 schema；[driver-core.ts](../../agent/home/extensions/driver-core.ts) 负责校验、命令、采集和返回。collect 函数可供局部脚本直接验证。
+[driver.ts](../../agent/home/extensions/diagnostics/driver.ts) 负责注册和参数 schema；[driver-core.ts](../../agent/home/extensions/diagnostics/driver-core.ts) 负责校验、命令、采集和返回。collect 函数可供局部脚本直接验证。
 
 | scope | 数据源与筛选 | 理由 |
 |---|---|---|

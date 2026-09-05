@@ -2,7 +2,7 @@
 
 查询卷空间、物理盘信息、SMART 和目录占用。实时磁盘负载使用 [sys io](sys.md#io磁盘与进程读写)。本工具只做统计，不判断文件是否可以安全删除。
 
-实现：[disk.ts](../../agent/home/extensions/disk.ts)。
+实现：[disk.ts](../../agent/home/extensions/diagnostics/disk.ts)。
 
 ## 调用
 

@@ -2,7 +2,7 @@
 
 列出目录的直接子项，按大小排序，适合逐层查找空间占用。需要整棵目录树的大文件、扩展名或旧文件排行时，使用 [disk usage](disk.md#usage占用分析)。
 
-实现：[ls.ts](../../agent/home/extensions/ls.ts)。本工具覆盖 pi 内置 `ls`，保留目录浏览入口并补充大小和占比。
+实现：[ls.ts](../../agent/home/extensions/diagnostics/ls.ts)。本工具覆盖 pi 内置 `ls`，保留目录浏览入口并补充大小和占比。
 
 ## 调用
 
