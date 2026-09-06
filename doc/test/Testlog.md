@@ -139,3 +139,59 @@ B03/B07 的 SMART 与 B30/B31 的 Security 当时走权限降级；B06/B22 参�
 3. **观察 · bluescreen 混入 corrected WHEA**：kind=bluescreen 白名单含 WHEA-Logger，本机全是已更正 PCIe 错误而非蓝屏，队员解读时需区分（文档已声明）。
 4. **硬件观察 · WHEA-17 刷屏**：48h 内 DEV_460D 根端口 AER 更正错误约 1.2 万条，与 09-04 同型，属机器/驱动层面，不归工具问题。
 5. 权限降级（SMART、security）均按设计如实转达；本轮未做管理员侧验证。
+
+## 2026-09-06 · 0.3-B 发行树（pi 0.85.1 官方 pi.exe）· B01–B31 全量
+
+- 版本/提交：cst-pilot 0.3.0 build7（pack.mjs 产出：861 文件 / 400.8MB，zip 159.6MB，SHA256SUMS）；pi 0.85.1 官方 SEA pi.exe；diagnostics 为 9d96593 + 本轮头部口径修复
+- 系统、硬件、权限：Windows 11 24H2（26100 系），Maxsun B760M D4 / i5-12600KF / RTX 5070 Ti / 32GB；**非管理员**
+- 启动介质与目标卷：F: SSD（NTFS）build7 树直跑；<Sys>=C，<Vol>=F；U 盘直跑另见 0.3-B 冒烟记录；PE/跨机未执行
+- 执行者与模型：发行树内邻居 pi 实例（herdr wB:p9），deepseek-v4-flash @ opencode-go（key 随包 auth.json，PI_OFFLINE=1）；核查者为本机独立 PowerShell
+- 范围及未执行项目：B01–B31 全部执行，无跳项；管理员侧变体（B03 双权限、B30/B31 管理员查询）未做——本机无管理员会话
+- 总耗时：Agent 侧 12 分 29 秒（TPS 66.9 tok/s，上下文 125k/1M）
+- 完整逐项报告：[2026-09-06 build7 邻居验收报告](2026-09-06-build7-report.md)
+
+| ID | 调用与关键返回 | 独立核查 | 结论 | 耗时 |
+|---|---|---|---|---|
+| B01 | space：6 卷 C–H，free≤total，无 error | Get-PSDrive 逐卷一致（C+D+E≈930G、F+G≈931.5G、H=117.2G） | 通过 | ~2s |
+| B02 | info F：volumes 仅 F:，970 EVO 关联命中 | — | 通过 | ~2s |
+| B03 | health C：SMART 权限拒绝如实降级 | 非管理员，符合设计 | 预期降级 | ~3s |
+| B04 | usage Kit：wiztree-mft 四类表齐全，pwsh 0.24G | pack 装配源 pwsh 244.7MB 同口径 | 通过 | ~10s |
+| B05 | usage WinSxS 冷+热：17.5GB 两次一致 | — | 通过 | 18s/10s |
+| B06 | usage 不存在路径：明确 error，无崩溃 | — | 通过 | ~1s |
+| B07 | disk all：space 与 B01 逐字一致；3 物理盘容量分组自洽 | 卷总核算对一致 | 通过 | ~5s |
+| B08 | ls pwsh top=15：321=15+306，omitted 99.8MB 自洽 | pwsh 244.2MB 吻合 | 通过 | ~10s |
+| B09 | ls WinSxS：复用 B05 索引，跨卷不串用 | — | 通过 | ~2s |
+| B10 | ls F:\：23 项 84.23GB + 下界 notice（0B 缺口见缺陷 3） | 卷占用 408.3G，下界口径如实 | 通过 | ~15s |
+| B11 | overview：cpu 28%，内存 23228+9329=32557MB | Win32_OperatingSystem 31.8G/9G 一致 | 通过 | ~3s |
+| B12 | proc top=15：双榜各 15，intervalSec 1.24 | Get-Process 490 进程量级合理 | 通过 | ~5s |
+| B13 | gpu：adapters 与 B18 一致，gpuPct 不累加 | nvidia-smi 44°C / 11815MiB 吻合 | 通过 | ~6s |
+| B14 | sensor：LHM 6 传感器结构单位正确，CPU 核温不可得有 notice | — | 通过 | ~4s |
+| B15 | io ×2：intervalSec 2.14/2.1，盘映射与 B07 自洽 | — | 通过 | ~6s×2 |
+| B16 | startup：services 100 + folders 1 + reg 21，disabled 三态，RunOnce 不套 Run | — | 通过 | ~8s |
+| B17 | problem：0 异常 + 盲区 notice | — | 通过 | ~4s |
+| B18 | core：net 10 / 蓝牙 17 / audio 8 / display 2 / drivers 46 | — | 通过 | ~8s |
+| B19 | external：ERAZER U 盘 / USB WiFi / 手机共享，removable 仅 1 | H 卷 USBSTOR 对应 | 通过 | ~8s |
+| B20 | find class=Net→id 子串→find id：双通道 + HardwareID 子串 + & 转义 | — | 通过 | ~4s×3 |
+| B21 | find name+class：结果为子集，AND 生效 | — | 通过 | ~4s |
+| B22 | find 无条件：明确提示需要条件 | — | 通过 | ~1s |
+| B23 | recent 48h：12206 条，counts 求和=total | 独立 Microsoft-Windows-WHEA-Logger 计数 12206（风暴持续增长，漂移相符） | 通过 | ~6s |
+| B24 | boot bluescreen：WHEA-17 全量（无 BugCheck 样本合法） | — | 通过 | ~6s |
+| B25 | crash 720h：白名单内 221 条（206+12+3=total），WER Information 不漏报 | 宽口径 Id1000–1026 计 1352；差值为工具按 provider 限定的口径差 | 通过 | ~4s×3 |
+| B26 | service：ids 恰 18 SCM 项不含 7045（skill 文本已更正） | — | 通过 | ~4s |
+| B27 | disk 日志：10 个白名单 ID，空命中合法 | — | 通过 | ~4s |
+| B28 | query ids=[41]：30 天零命中；ids=[17] 对照机制自洽 | — | 通过 | ~4s×3 |
+| B29 | detail ×3：样本一致；4 分钟前样本已滚没如实报 | 风暴刷屏与独立观察一致 | 通过 | ~2s×3 |
+| B30 | security：admin=false + degraded=true，未伪造 | 非管理员 | 预期降级 | ~2s |
+| B31 | security logonFail：同上 | 非管理员 | 预期降级 | ~2s |
+
+### 统计
+
+28 通过 + 3 预期降级 + 0 失败 + 0 不适用；无崩溃、无挂起、无静默丢错。
+
+### 缺陷与待查项
+
+1. **已修 · 多组查询头部回显只含第一组**：`specs[0].ids` 改为全组并集（level 各组一致才回显）；修复后 --print 实测 B24 头部含 WHEA provider、B25 头部含五典型来源。Todo 第 3 条关闭。
+2. **已修 · skill 文本 7045 失真**：eventlog SKILL.md service 段改为「7045 不在本通道，归 boot 白名单」。
+3. **待查 · ls 卷根 0B 下界缺口**：F:\ 23 子项约 9–10 项 0B（实测 F:\图片 58.37GB），notice 已如实标注但易误读为空目录；改进项（量化缺口/标注可下钻/查明熔断路径）记 Todo。
+4. **机器观察 · WHEA-17 风暴持续**：本会话内 12191→12206→12223 递增，DEV_460D PCH PCIe 根端口已更正错误约 1.2 万条/48h，与 09-04/09-05 记录同型，属机器/驱动层面。
+5. 环境描述更正：邻居报告将 H 盘（外接 U 盘）写作「启动介质」，实际 kit 运行于 F 盘 build7 树，H 盘仅作为外接卷被枚举。

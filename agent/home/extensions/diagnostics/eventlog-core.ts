@@ -377,9 +377,9 @@ export interface CoreResultData {
 	logs: string[];
 	hours: number;
 	top: number;
-	level?: LevelTier; // 最低级别档回显（scope 未传时不字段）
-	ids?: number[]; // ID 白名单回显（下推时）
-	providers?: string[]; // 提供程序回显（下推时）
+	level?: LevelTier; // 最低级别档回显（scope 未传时不字段；多组级别不一致时不回显）
+	ids?: number[]; // ID 白名单并集回显（多组白名单取全组并集）
+	providers?: string[]; // 提供程序并集回显（多组白名单取全组并集）
 	total: number; // 时间窗内命中总数（含未显示的更早记录）
 	truncated: boolean; // total > top，事件列表被截断
 	unreadable: number; // 消息资源损坏被跳过的记录数
@@ -479,13 +479,18 @@ export async function queryEvents(
 		last: String(c.last ?? ""),
 	}));
 
+	// 头部回显口径：多组白名单（boot/crash）取全组并集，避免只回显第一组造成失真；
+	// 各组级别一致才回显 level，否则置空（级别口径由各 scope 的白名单描述说明）
+	const idUnion = [...new Set(specs.flatMap((s) => s.ids ?? []))];
+	const provUnion = [...new Set(specs.flatMap((s) => s.providers ?? []))];
+	const levelSet = new Set(specs.map((s) => s.level ?? ""));
 	const data: CoreResultData = {
 		logs: [...new Set(specs.flatMap((s) => s.logNames))],
 		hours: specs[0].hours,
 		top: specs[0].top,
-		level: specs[0].level,
-		ids: specs[0].ids,
-		providers: specs[0].providers,
+		level: levelSet.size === 1 ? specs[0].level : undefined,
+		ids: idUnion.length > 0 ? idUnion : undefined,
+		providers: provUnion.length > 0 ? provUnion : undefined,
 		total: r.total,
 		truncated: !!r.truncated,
 		unreadable: Number(r.unreadable ?? 0),
