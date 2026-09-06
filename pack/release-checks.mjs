@@ -7,6 +7,9 @@ export const sha256 = (data) => crypto.createHash('sha256').update(data).digest(
 // 运行态只能出现在测试副本；干净发行树出现这些路径就拒绝打包。
 export function checkReleaseTree(root, files) {
   for (const rel of files) {
+    if (/^pi\.exe$/i.test(rel)) {
+      throw new Error(`pi.exe 不得位于发行根（应装配为 agent/.runtime/prx.bin）: ${rel}`);
+    }
     if (/(^|\/)(\.state|\.git|sessions|\.cache)(\/|$)|^agent\/home\/(auth\.json|models\.json|web-search\.json|fff\/|npm\/)|^wiztree\/(tmp\/|WizTree3\.ini$)|(^|\/)\.env(?:\.|$)/i.test(rel)) {
       throw new Error(`发行树含运行状态或凭据路径: ${rel}`);
     }

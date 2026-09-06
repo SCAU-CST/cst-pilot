@@ -274,7 +274,10 @@ banner("白名单装配（官方 + 仓库 + 生成）");
 for (const it of CONFIG.OFFICIAL_ITEMS) {
   const src = path.join(officialDir, it.p);
   if (!fs.existsSync(src)) die(`官方包缺少 ${it.p}（官方布局变更？）`);
-  const dst = path.join(out, it.p);
+  // 官方资源全部随 pi.exe 藏入 agent/.runtime（SEA 按自身目录找 theme/assets 等）；
+  // pi.exe 改名 prx.bin，防绕过启动器直跑裸 pi；内容哈希锁不变。
+  const dst = path.join(out, "agent", ".runtime", it.p === "pi.exe" ? "prx.bin" : it.p);
+  fs.mkdirSync(path.dirname(dst), { recursive: true });
   it.f ? fs.copyFileSync(src, dst) : fs.cpSync(src, dst, { recursive: true });
 }
 console.log("  官方运行资源已复制");

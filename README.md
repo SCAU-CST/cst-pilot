@@ -51,12 +51,12 @@ cst-pilot/
 
 ```
 cst-pilot/
-|-- pi.cmd, pi.exe
-|-- package.json, photon_rs_bg.wasm
-|-- theme/, export-html/, native/, assets/, node_modules/
-|-- agent/home/
-|   |-- extensions/, packages/, skills/, bin/
-|   `-- APPEND_SYSTEM.md, settings.json, models-store.json, open-tui.json
+|-- pi.cmd
+|-- agent/
+|   |-- .runtime/              pi 官方二进制与运行资源（隐藏；经 pi.cmd 调用）
+|   `-- home/
+|       |-- extensions/, packages/, skills/, bin/
+|       `-- APPEND_SYSTEM.md, settings.json, models-store.json, open-tui.json
 |-- pwsh/, wiztree/, lhm/
 |-- doc/                       不含 test/
 |-- licenses/

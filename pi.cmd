@@ -4,7 +4,8 @@ rem  CST Pilot launcher v10 (0.3 layout + portable program state)
 rem  cst-pilot: Computer Service Team portable diagnostics kit,
 rem  built on pi coding agent. 'pi' kept in the name in tribute.
 rem  Layout:
-rem    pi.exe   = official standalone binary (0.3 release, if present)
+rem    agent\.runtime\prx.bin = official pi binary, renamed + hidden
+rem      (never exposed as pi.exe at the root; not a real sandbox)
 rem    node\    = Node.js runtime (dev checkout fallback, 0.2 layout)
 rem    pwsh\    = PowerShell 7 runtime
 rem    wiztree\ = WizTree portable (fast disk usage, admin only)
@@ -25,8 +26,8 @@ rem        POWERSHELL_TELEMETRY_OPTOUT=1, POWERSHELL_UPDATECHECK=Off
 rem    - --no-skills + explicit --skill (only agent\home\skills)
 rem    - --no-context-files, defaultProjectTrust=never (settings)
 rem    - UTF-8 console (chcp 65001) + PYTHONUTF8 injection
-rem  Engine selection: pi.exe when present (0.3 release), otherwise
-rem  the node-based dev checkout (0.2 layout, agent\node_modules).
+rem  Engine selection: agent\.runtime\prx.bin when present (0.3 release),
+rem  otherwise the node-based dev checkout (0.2 layout, agent\node_modules).
 rem  Host boundary: these settings are not an OS sandbox and cannot
 rem  suppress Windows logging or every native runtime side effect.
 rem    - Known limit: if client already has pwsh profile files, pwsh
@@ -79,11 +80,12 @@ chcp 65001 >nul
 set "PYTHONUTF8=1"
 set "PYTHONIOENCODING=utf-8"
 
-if exist "%ROOT%pi.exe" goto :run_binary
+if exist "%ROOT%agent\.runtime\prx.bin" goto :run_binary
 goto :run_node
 
 :run_binary
-"%ROOT%pi.exe" --no-skills --skill "%ROOT%agent\home\skills" --no-context-files %*
+attrib +h "%ROOT%agent\.runtime" >nul 2>&1
+"%ROOT%agent\.runtime\prx.bin" --no-skills --skill "%ROOT%agent\home\skills" --no-context-files %*
 endlocal
 exit /b %errorlevel%
 
