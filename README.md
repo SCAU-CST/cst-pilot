@@ -82,6 +82,8 @@ node\node.exe pack\pack.mjs --official <官方 pi-windows-x64-0.85.1.zip> --out 
 pi.cmd
 ```
 
+**首次运行**需在 pi 内执行 `/login` 选择 provider 并填写 API key（key 不随包分发；凭据写入本机的 `agent\home\auth.json`，属该机的本地状态）。模型目录缓存（models-store.json）随包，无凭据，离线可见模型列表。
+
 # 致谢
 
 名称中的 **pi** 致敬本项目所基于的 [pi coding agent](https://github.com/earendil-works/pi)。感谢这一伟大的开源项目。

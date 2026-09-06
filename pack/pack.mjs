@@ -84,9 +84,10 @@ const CONFIG = {
   ],
 
   // agent/home 散文件（发行版白名单；排除运行态与开发态：npm/、sessions/、fff/、
-  // models.json、web-search.json）。auth.json 含 CST 团队共享网关凭据，必须随包
-  // （pi 0.85 的 key 存 auth.json，见官方 docs/providers.md；0.2 时代同 key 存 models.json）。
-  REPO_HOME_FILES: ["APPEND_SYSTEM.md", "auth.json", "models-store.json", "open-tui.json"],
+  // auth.json、models.json、web-search.json）。**API key 不随包分发**：队员首跑在
+  // pi 内 /login 填写网关凭据（写入发行树的 agent/home/auth.json，属该机的本地状态）；
+  // models-store.json 仅模型目录缓存，无凭据，随包保留（离线可用模型列表）。
+  REPO_HOME_FILES: ["APPEND_SYSTEM.md", "models-store.json", "open-tui.json"],
 
   // 发行 settings.json 生成（packages 用本地路径，不触发任何安装）
   RELEASE_SETTINGS: {
@@ -297,7 +298,8 @@ const SKIP = [".state"];
 const releaseFiles = walk(out, out, SKIP).filter(
   (rel) =>
     !rel.startsWith("agent/home/sessions/") &&
-    !rel.startsWith("agent/home/fff/"),
+    !rel.startsWith("agent/home/fff/") &&
+    rel !== "agent/home/auth.json",
 );
 let bytes = 0;
 for (const rel of releaseFiles) bytes += fs.statSync(path.join(out, rel)).size;
