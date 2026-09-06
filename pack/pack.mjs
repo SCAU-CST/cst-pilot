@@ -278,18 +278,25 @@ console.log(`  SHA256SUMS: ${files.length} 个文件`);
 
 // ---------- [6] 打包后自动冒烟 ----------
 
-banner("打包后冒烟（发行树 pi.cmd --print，PI_OFFLINE 不影响模型调用）");
-const smoke = spawnSync("cmd.exe", ["/c", path.join(out, "pi.cmd"), "--print", "只回复ok"], {
-  cwd: out,
-  encoding: "utf8",
-  timeout: 300000,
-});
-if (smoke.error || smoke.status !== 0) {
-  die(`冒烟失败: ${smoke.error?.message ?? `退出码 ${smoke.status}`}\n${smoke.stderr ?? ""}`);
+// 冒烟验证发行树启动链路 + 完整模型调用。注意：发行树无 API key（不随包），
+// 冒烟调模型依赖开发机已有凭据（全局 ~/.pi/agent/auth.json 或环境变量）；
+// 若报 No API key 且发行树结构正常，属预期，可用 --skip-smoke 跳过。
+banner("打包后冒烟（发行树 pi.cmd --print）");
+if (argv.includes("--skip-smoke")) {
+  console.log("  已跳过（--skip-smoke）");
+} else {
+  const smoke = spawnSync("cmd.exe", ["/c", path.join(out, "pi.cmd"), "--print", "只回复ok"], {
+    cwd: out,
+    encoding: "utf8",
+    timeout: 300000,
+  });
+  if (smoke.error || smoke.status !== 0) {
+    die(`冒烟失败: ${smoke.error?.message ?? `退出码 ${smoke.status}`}\n${smoke.stderr ?? ""}\n      （发行树无 key，若开发机也无凭据则模型调用必败，属预期；可用 --skip-smoke 复验树结构）`);
+  }
+  const smokeOut = (smoke.stdout ?? "").trim().split(/\r?\n/).filter(Boolean).pop() ?? "";
+  if (!smokeOut.includes("ok")) die(`冒烟输出异常: ${smokeOut}`);
+  console.log(`  冒烟通过，输出: ${smokeOut}`);
 }
-const smokeOut = (smoke.stdout ?? "").trim().split(/\r?\n/).filter(Boolean).pop() ?? "";
-if (!smokeOut.includes("ok")) die(`冒烟输出异常: ${smokeOut}`);
-console.log(`  冒烟通过，输出: ${smokeOut}`);
 
 // ---------- [7] 统计（排除冒烟产生的运行态） ----------
 
