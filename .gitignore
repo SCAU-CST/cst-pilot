@@ -20,3 +20,4 @@ agent/home/sessions/
 Thumbs.db
 desktop.ini
 .state/
+.audit/

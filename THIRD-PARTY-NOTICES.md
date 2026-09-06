@@ -6,7 +6,7 @@ CST Pilot 发行版包含以下第三方组件。各组件以其原有许可证�
 
 | 组件 | 版本 | 许可证 | 来源 | 用途 |
 |---|---|---|---|---|
-| pi (pi.exe) | 0.85.1 | MIT | https://github.com/earendil-works/pi | Agent 运行时（官方 SEA 单文件发行） |
+| pi (pi.exe) | 0.85.1 | MIT | https://github.com/earendil-works/pi | Agent 运行时（官方 Windows 独立发行，内含 Bun 1.3.14） |
 | PowerShell | 7.6.5 | MIT | https://github.com/PowerShell/PowerShell | 诊断工具执行环境（随包 `pwsh/LICENSE.txt`） |
 | fd | 10.5.0 | MIT / Apache-2.0（双许可） | https://github.com/sharkdp/fd | 文件查找（bin\fd.exe） |
 | ripgrep | 15.2.0 | MIT / Unlicense（双许可） | https://github.com/BurntSushi/ripgrep | 内容搜索（bin\rg.exe） |
