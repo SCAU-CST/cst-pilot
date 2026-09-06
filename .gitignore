@@ -19,3 +19,4 @@ agent/home/sessions/
 # ---- 杂项 ----
 Thumbs.db
 desktop.ini
+.state/
