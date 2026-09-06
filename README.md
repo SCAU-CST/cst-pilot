@@ -29,22 +29,42 @@
 
 ## 目录结构
 
-> ✅ 已入库　❌ 不入库
+### 开发版（本仓库）
 
 ```
 cst-pilot/
-├── pi.cmd                          ✅ 唯一入口，启动隔离的 pi Agent（v9，见下）
-├── doc/                            ✅ 项目文档（PRD / 设计 / 工具文档）
-├── pack/                           ✅ 可复现发行构建脚本（pack.mjs）
-├── THIRD-PARTY-NOTICES.md          ✅ 第三方组件声明（随发行包分发）
-├── lhm/                            ❌ DLL 不入库（发行版打包时从本地拷入，见 lhm/README.md）
-└── agent/
-    ├── node_modules/               ❌ pi 及依赖（开发环境；发行版用官方 pi.exe，不带此目录）
-    └── home/                       ✅（部分）隔离的 pi 配置：extensions（诊断工具）、skills、settings.json
-        ├── {auth,models,models-store,web-search,open-tui}.json   ❌ 密钥与运行时状态
-        ├── sessions/               ❌ 会话历史
-        └── {bin,npm,fff}/          ❌ fff 扩展运行产物
+|-- pi.cmd
+|-- doc/
+|-- pack/
+|-- agent/
+|   |-- node_modules/          pi 及依赖（不入库）
+|   `-- home/
+|       |-- extensions/        诊断工具
+|       |-- skills/
+|       `-- bin/, npm/, fff/, sessions/, *.json   运行产物与密钥（不入库）
+|-- node/                      Node.js（不入库）
+|-- pwsh/, wiztree/, lhm/      便携运行时（不入库）
+`-- README.md, AGENTS.md, THIRD-PARTY-NOTICES.md, biome.json, .gitignore
 ```
+
+### 发行版（pack 产出）
+
+```
+cst-pilot/
+|-- pi.cmd, pi.exe
+|-- package.json, photon_rs_bg.wasm
+|-- theme/, export-html/, native/, assets/, node_modules/
+|-- agent/home/
+|   |-- extensions/, packages/, skills/, bin/
+|   `-- APPEND_SYSTEM.md, settings.json, models-store.json, open-tui.json
+|-- pwsh/, wiztree/, lhm/
+|-- doc/                       不含 test/
+|-- licenses/
+|-- README.md, AGENTS.md, THIRD-PARTY-NOTICES.md, biome.json
+`-- VERSION, SHA256SUMS, BUILD-INFO.json
+```
+
+发行包不含密钥与运行态；首跑在 pi 内执行 `/login` 填写 key。
 
 
 ## 注意事项
@@ -63,8 +83,8 @@ cst-pilot/
 pi.cmd
 ```
 
-**首次运行**需在 pi 内执行 `/login` 选择 provider 并填写 API key。
+**首次运行**需在 pi 内执行 `/login` 选择 provider 并填写 API key（凭据写入本机 `agent/home/auth.json`）。
 
-# 致谢
+## 致谢
 
 名称中的 **pi** 致敬本项目所基于的 [pi coding agent](https://github.com/earendil-works/pi)。感谢这一伟大的开源项目。
