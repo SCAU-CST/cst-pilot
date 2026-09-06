@@ -1,5 +1,5 @@
 {
-  "_comment": "cst-pilot: 只读分析 Agent（完全隔离版）。defaultTools 仅官方结构只读四件套；edit/write/powershell/bash 不注册。disk 由 extensions/disk.ts 注册。defaultProjectTrust=never 拒绝 cwd 祖先链上的项目级资源（.pi/.agents）；skills 与上下文文件由 pi.cmd 传 --no-skills --no-context-files 硬关闭；模型/KEY 由 models.json（第三方网关）统一管理。",
+  "_comment": "cst-pilot: 只读分析 Agent（完全隔离版）。defaultTools 仅官方结构只读两件套；edit/write/powershell/bash 不注册。六诊断工具（disk/driver/eventlog/ls/startup/sys）由 extensions/diagnostics/ 注册。defaultProjectTrust=never 拒绝 cwd 祖先链上的项目级资源（.pi/.agents）；skills 与上下文文件由 pi.cmd 传 --no-skills --no-context-files 硬关闭；模型/KEY 由 models-store.json 统一管理；enableInstallTelemetry=false 关闭安装/更新遥测，启动网络操作由 pi.cmd 的 PI_OFFLINE=1 全量关闭。",
   "defaultProvider": "opencode-go",
   "defaultModel": "glm-5.3-flash",
   "defaultTools": [
@@ -7,6 +7,7 @@
     "ls"
   ],
   "defaultProjectTrust": "never",
+  "enableInstallTelemetry": false,
   "lastChangelogVersion": "0.84.4",
   "packages": [
     "npm:@ff-labs/pi-fff",

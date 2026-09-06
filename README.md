@@ -33,32 +33,44 @@
 
 ```
 cst-pilot/
-├── pi.cmd                          ✅ 唯一入口，启动隔离的 pi Agent
+├── pi.cmd                          ✅ 唯一入口，启动隔离的 pi Agent（v9，见下）
 ├── doc/                            ✅ 项目文档（PRD / 设计 / 工具文档）
+├── pack/                           ✅ 可复现发行构建脚本（pack.mjs）
+├── THIRD-PARTY-NOTICES.md          ✅ 第三方组件声明（随发行包分发）
 ├── lhm/                            ❌ DLL 不入库（发行版打包时从本地拷入，见 lhm/README.md）
 └── agent/
-    ├── node_modules/               ❌ pi 及依赖（npm install 重建，见下）
-    └── home/                       ✅（部分）隔离的 pi 配置：extensions（自定义工具）、skills、settings.json
+    ├── node_modules/               ❌ pi 及依赖（开发环境；发行版用官方 pi.exe，不带此目录）
+    └── home/                       ✅（部分）隔离的 pi 配置：extensions（诊断工具）、skills、settings.json
         ├── {auth,models,models-store,web-search,open-tui}.json   ❌ 密钥与运行时状态
         ├── sessions/               ❌ 会话历史
         └── {bin,npm,fff}/          ❌ fff 扩展运行产物
 ```
 
-以下目录随发行版分发，不在仓库中：
+## 启动器（pi.cmd v9）
 
-```
-cst-pilot/
-├── node/                           ❌ Node.js 运行时（便携版，另行分发）
-├── pwsh/                           ❌ PowerShell 7 运行时（便携版，另行分发）
-└── wiztree/                        ❌ WizTree 便携版（磁盘占用快速分析，需管理员权限，另行分发）
-```
+- **双形态**：发行树存在 `pi.exe`（官方 pi 0.85.1 SEA 单文件）则直接运行；开发环境回退到 `node\ + agent\node_modules` 的 0.2 布局。
+- **客户机零写入**：所有易变状态重定向到 U 盘内 `.state\`：`TMP/TEMP → .state\tmp`（jiti 缓存、日志、PDF 临时输出）、`XDG_CACHE_HOME → .state\cache`、`FFF_FRECENCY_DB/HISTORY_DB → .state\data`、`PSModuleAnalysisCachePath → .state\cache`（PowerShell 模块分析缓存，其默认 LOCALAPPDATA 不受 XDG_CACHE_HOME 影响）。目录创建失败（只读介质/写保护/空间不足）时报错退出，不静默泄漏到客户机。已实测审计（2026-09-06）：**全新客户机零写入**；唯一已知限制——若客户机已有 pwsh 的 JIT 启动优化档案（`StartupProfileData-*`），便携 pwsh 会更新它（二进制 JIT 档案，无用户数据；pwsh 硬编码行为，无官方开关，PowerShell issue #26528），无法隔离。
+- **遥测与更新检查全关**：`PI_OFFLINE=1`（pi 启动网络操作、安装/更新遥测、版本检查）+ settings `enableInstallTelemetry=false` + `POWERSHELL_TELEMETRY_OPTOUT=1` + `POWERSHELL_UPDATECHECK=Off`。
+- **隔离**：`PI_CODING_AGENT_DIR` 强制指向 `agent\home`；严格 PATH 白名单；`--no-skills --no-context-files`；`defaultProjectTrust=never`。
 
 ## 注意事项
 
-1. 本仓库只含源码与文档，完整运行环境请看发行部分。
+1. 本仓库只含源码与文档，完整运行环境请用 pack 脚本构建（见下）。
 2. 当前实现中，提示词为 `APPEND_SYSTEM.md`而非熟知的`AGENTS.md`，原因见 [doc/Notice.md](doc/Notice.md)
 3. 模型URL和API当然是不包括的。如果你是CST的队员且需要相关资源，请联系你们的委员。
-4. 发行（拷贝整个目录到 U 盘）前，删除 `wiztree\WizTree3.ini`：它是上一台机器的界面状态（DPI、窗口位置等），跨机携带可能触发 WizTree 启动崩溃；WizTree 首次运行会自动重建默认配置，实测删除无副作用。
+4. WizTree 仅个人使用免费、商业使用需授权，见 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)。
+
+## 发行构建（0.3-B）
+
+发行形态：**官方 pi.exe（SEA 单文件）+ 本仓库内容 + 预打包扩展**，白名单装配、零运行态（不含 sessions/fff 数据库/auth 文件/npm 缓存），并生成 `VERSION` 与 `SHA256SUMS`。装机大小约 905 个文件 / 400MB，zip 约 159MB，FAT32 U 盘解压约 1 分钟。
+
+```cmd
+node\node.exe pack\pack.mjs --official <官方 pi-windows-x64-0.85.1.zip> --out <新目录> --zip
+```
+
+- 扩展预打包：pi-web-access、pi-fff 经 esbuild（首次需联网下载，之后离线可复现）；pi-open-tui 零依赖原样分发；settings.json 的 `packages` 指向本地路径包，离线不安装。
+- 打包后自动冒烟（`--print` 走一次完整模型调用）；升级 pi.exe 版本必须先改 pack.mjs 的 `PI_VERSION` 并走全量验收（doc/test/README.md）。
+- 运行时会在 U 盘内生成 `.state\`（jiti/PowerShell/fff 缓存）与 `agent\home\sessions/`，属设计内行为，不影响客户机；升级换包时丢弃即可。
 
 
 
