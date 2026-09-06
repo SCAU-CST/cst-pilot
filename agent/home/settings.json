@@ -8,7 +8,7 @@
   ],
   "defaultProjectTrust": "never",
   "enableInstallTelemetry": false,
-  "lastChangelogVersion": "0.84.4",
+  "lastChangelogVersion": "0.85.1",
   "packages": [
     "npm:@ff-labs/pi-fff",
     "npm:pi-open-tui@0.2.10",
