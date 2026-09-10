@@ -21,3 +21,6 @@ Thumbs.db
 desktop.ini
 .state/
 .audit/
+
+# ---- pi-web 验证（validate/pi-web 分支）----
+node_modules/
