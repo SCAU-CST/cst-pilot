@@ -21,9 +21,9 @@
 | 通道 | 入口 | 说明 |
 |---|---|---|
 | TUI | `pi.cmd` | 默认通道，发行版唯一入口 |
-| Web | `pi-web.cmd` | `@agegr/pi-web` 0.9.0，浏览器 UI，仅开发版，仅回环 `127.0.0.1:30141` |
+| Web | 自制 cst-pilot-web | 规划中：自研浏览器 UI 替代第三方 pi-web；仅开发版，仅回环 |
 
-pi-web 引入动机：绕过悬而未解的 Windows 终端字符渲染问题，提供不经终端的交互路径；与 TUI 共用同一隔离 home（`agent\home`），会话互通。发行版不包含（官方 pi.exe 无法承载 node 服务端应用，且现场诊断场景不需要本机 web 服务）。
+曾引入 `@agegr/pi-web` 0.9.0 作开发版 Web 通道（动机：绕过未解的 Windows 终端字符渲染问题，提供不经终端的交互路径；与 TUI 共用同一隔离 home，会话互通）。2026-09-10 移除：其前端工具预设会在每次新建会话时显式下发内置工具列表，绕过 settings.json 的 defaultTools 白名单，与只读约束冲突。后续按 Todo #9 自制 cst-pilot-web。发行版不含 Web 通道（官方 pi.exe 无法承载 node 服务端应用，且现场诊断场景不需要本机 web 服务）。
 
 ## 约束
 
