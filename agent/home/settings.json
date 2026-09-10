@@ -13,5 +13,6 @@
     "npm:@ff-labs/pi-fff@0.10.6",
     "npm:pi-open-tui@0.2.10",
     "npm:pi-web-access@0.18.0"
-  ]
+  ],
+  "theme": "dark"
 }
