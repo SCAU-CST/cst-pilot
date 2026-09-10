@@ -33,7 +33,8 @@
 
 ```
 cst-pilot/
-|-- pi.cmd
+|-- pi.cmd                     TUI 入口（发行版同款）
+|-- pi-web.cmd                 Web UI 入口（仅开发版，见下）
 |-- doc/
 |-- pack/
 |-- agent/
@@ -65,6 +66,17 @@ cst-pilot/
 ```
 
 发行包不含密钥与运行态；首跑在 pi 内执行 `/login` 填写 key。
+
+### pi-web（Web UI，仅开发版）
+
+开发版提供 `@agegr/pi-web`（浏览器端 Pi UI）。与 pi.cmd 共用同一套隔离模型（`PI_CODING_AGENT_DIR`、
+PATH 白名单、`.state` 临时目录），与 TUI 读写同一个 `agent/home`，会话互通：
+
+```
+pi-web.cmd          # 启动后自动打开 http://127.0.0.1:30141（仅回环）
+```
+
+发行版不含 pi-web：官方 pi.exe 无法承载 node 服务端应用，且上门诊断场景不需要本机 web 服务。
 
 
 ## 注意事项
