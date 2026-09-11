@@ -25,7 +25,7 @@
 
 ### 未来计划
 
-暂无。
+自制 Web 操作界面，随便携发行版提供；目标是在本项目开放的能力范围内完整替代 TUI 操作，保留 TUI 通道。详见 [Web 决策](doc/design/web/decision.md)。
 
 ## 目录结构
 
@@ -66,11 +66,11 @@ cst-pilot/
 
 发行包不含密钥与运行态；首跑在 pi 内执行 `/login` 填写 key。
 
-### Web UI（自制 cst-pilot-web，规划中）
+### Web UI（自制 @cst-pilot/web，规划中）
 
-曾提供 `@agegr/pi-web` 作开发版 Web 通道（与 pi.cmd 共用隔离模型，会话互通），
-2026-09-10 移除：其工具预设机制会绕过 defaultTools 只读白名单。
-后续按 doc/Todo.md #9 自制 cst-pilot-web 包；设计阶段产出前，Web 通道暂缺。
+后续按 [Todo #9](doc/Todo.md) 自制 pi 扩展，目标是与 TUI 共用当前会话，并随便携发行版提供现代版和兼容版页面。
+
+规划通过 `pi.cmd` 启动后执行 `/web` 打开浏览器，`/web o` 选择兼容版；仅监听本机回环地址。Web 将覆盖会话、模型、凭据配置与本项目扩展交互，方案见 [Web 决策](doc/design/web/decision.md)。当前尚未实现，Web 通道暂缺。
 
 
 ## 注意事项
