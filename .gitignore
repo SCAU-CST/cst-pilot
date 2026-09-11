@@ -17,9 +17,6 @@ agent/home/pi-web-session-index.json
 agent/home/open-tui.json
 agent/home/sessions/
 
-# ---- 编译残留 ----
-agent/home/extensions/branding/header.js
-
 # ---- 杂项 ----
 Thumbs.db
 desktop.ini
