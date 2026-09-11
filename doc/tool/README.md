@@ -1,6 +1,6 @@
 # 工具文档
 
-本目录说明六个只读诊断工具的调用方式、返回字段和限制。设计理由见 [design](../design/sys_design.md)，验证方法见 [测试指南](../test/README.md)。
+本目录说明六个只读诊断工具的调用方式、返回字段和限制。设计理由见 [design](../design/tool/sys_design.md)，验证方法见 [测试指南](../test/README.md)。
 
 | 要解决的问题 | 工具 | 实现 |
 |---|---|---|
