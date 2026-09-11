@@ -65,6 +65,14 @@ function overBg(color: string, alpha: number): string {
 	return mix(BG, color, alpha);
 }
 
+// 淡入配色：命名色/十六进制色向背景预混 alpha（透明度 1 时原样返回）
+const NAMED_HEX: Record<string, string> = { accent: "#7fd7c4", muted: "#969696", dim: "#697370" };
+const PLAIN_HEX = "#c8cccc";
+function faded(color: string, a: number): string {
+	if (a >= 1 || !color) return color;
+	return mix(BG, color.startsWith("#") ? color : (NAMED_HEX[color] ?? PLAIN_HEX), a);
+}
+
 // LOGO 渐变节点：严格蓝带（色相 199~218°），不用偏青的 sky 系（那会显得灰）
 const SOLID_STOPS: Array<[number, string]> = [
 	[0.0, "#0d47a1"], // 深湛蓝（蓝-900，严格蓝带）
@@ -351,7 +359,9 @@ function centerArtRow(
 }
 
 // 星野行：整行都是背景点缀（艺术字上下的空行用）
-function starfieldSpans(width: number, seedRow: number): Span[] {
+function starfieldSpans(width: number, seedRow: number, a = 1): Span[] {
+	// 透明度 0：整行纯空格（真隐形）
+	if (a <= 0) return [{ text: " ".repeat(width) }];
 	const spans: Span[] = [];
 	let run = "";
 	const flush = () => {
@@ -364,10 +374,10 @@ function starfieldSpans(width: number, seedRow: number): Span[] {
 		const r = cellHash(x, seedRow, 9001);
 		if (r < 0.012) {
 			flush();
-			spans.push({ text: "*", color: "#155e75" });
+			spans.push({ text: "*", color: faded("#155e75", a) });
 		} else if (r < 0.05) {
 			flush();
-			spans.push({ text: "·", color: mix("#155e75", "#0f172a", 0.5) });
+			spans.push({ text: "·", color: faded(mix("#155e75", "#0f172a", 0.5), a) });
 		} else {
 			run += " ";
 		}
@@ -439,9 +449,24 @@ function padSpans(spans: readonly Span[], width: number): Span[] {
 	return out;
 }
 
-function centerSpans(text: string, width: number, color?: string, bold?: boolean): Span[] {
+// 透明度 0：不发字形，纯空格占位（终端无真透明，背景色预混会渲染成色块，空格才是真隐形）
+function ghostText(text: string): string {
+	return " ".repeat(visibleWidth(text));
+}
+
+function centerSpans(text: string, width: number, color: string | undefined, bold: boolean | undefined, a = 1): Span[] {
 	if (width <= 0) return [];
 	const w = visibleWidth(text);
+	if (a <= 0) {
+		return [
+			{
+				text: ghostText(
+					w >= width ? truncateToWidth(text, width, "…") : " ".repeat(Math.floor((width - w) / 2)) + text,
+				),
+				bold,
+			},
+		];
+	}
 	if (w >= width) {
 		return [{ text: truncateToWidth(text, width, "…"), color, bold }];
 	}
@@ -518,18 +543,42 @@ const PILOT_ART = buildShadowArt("PILOT"); // 41 列 x 6 行
 const PILOT_ART_W = PILOT_ART[0].length;
 
 export class BrandingHeader implements Component {
+	// 动画定格上界：~9s 入场 + 1 个完整稳态循环（停在循环接缝，无跳变）。
+	// 头部在内容区顶部，一旦滚出视口，任何一行变化都会触发 pi-tui 全量重绘并清原生回滚，
+	// 动画必须限时，否则用户永远无法向上滚动阅读历史。
+	private static readonly FREEZE_AT = 21;
 	private readonly pi: ExtensionAPI;
 	private readonly ctx: ExtensionContext;
 	private readonly tui: TUI;
 	private readonly startAt = Date.now();
+	private frozen = false;
 	private timer?: ReturnType<typeof setInterval>;
 
 	constructor(pi: ExtensionAPI, ctx: ExtensionContext, tui: TUI) {
 		this.pi = pi;
 		this.ctx = ctx;
 		this.tui = tui;
-		// ~10fps 驱动动画重绘；dispose 时清理
+		// 恢复的历史会话：跳过入场动画，直接定格（避免开场就反复清回滚）。
+		// 注意：启动时就会写入 model_change/thinking_level_change 元数据条目，
+		// 只有真正的对话内容（message/custom/compaction）才算历史会话。
+		try {
+			this.frozen = ctx.sessionManager
+				.getEntries()
+				.some((e) => e.type === "message" || e.type === "custom" || e.type === "compaction");
+		} catch {
+			this.frozen = false;
+		}
+		if (this.frozen) return;
+		// ~10fps 驱动动画重绘；到 FREEZE_AT 或 dispose 时停止
 		this.timer = setInterval(() => {
+			if ((Date.now() - this.startAt) / 1000 >= BrandingHeader.FREEZE_AT) {
+				this.frozen = true;
+				if (this.timer) {
+					clearInterval(this.timer);
+					this.timer = undefined;
+				}
+				return;
+			}
 			this.tui.requestRender();
 		}, 100);
 	}
@@ -537,8 +586,17 @@ export class BrandingHeader implements Component {
 	render(width: number): string[] {
 		if (width < 24) return [toAnsiLine([{ text: `${BRAND} v${VERSION}`, color: "accent" }])];
 
-		const now = (Date.now() - this.startAt) / 1000; // 入场秒数
-		const phase = (now % LOOP_S) * ((Math.PI * 2) / LOOP_S); // 稳态波浪相位（12s 无缝循环）
+		const raw = (Date.now() - this.startAt) / 1000; // 入场秒数
+		// 到定格时间：停表，冻结在循环接缝（phase 0，字型全显）；tick 里也会冻结，这里是兑底
+		if (!this.frozen && raw >= BrandingHeader.FREEZE_AT) {
+			this.frozen = true;
+			if (this.timer) {
+				clearInterval(this.timer);
+				this.timer = undefined;
+			}
+		}
+		const now = this.frozen ? Number.POSITIVE_INFINITY : raw;
+		const phase = this.frozen ? 0 : (raw % LOOP_S) * ((Math.PI * 2) / LOOP_S); // 稳态波浪相位（12s 无缝循环）
 		const innerWidth = width - 2;
 		const { leftWidth, rightWidth, useTips } = headerColumnWidths(innerWidth);
 		const model = formatModelLabel(this.ctx.model);
@@ -568,55 +626,75 @@ export class BrandingHeader implements Component {
 			artMode = "text";
 		}
 
-		// 标语淡入：LOGO 浪完全漫过后（波前走完浪区 + 锯齿余量），从无到有（透明度 0 → 100%）
-		const TAGLINE_FADE = { dur: 1.8, guard: 6 };
+		// 全部非边框/标题文字的淡入：LOGO 浪完全漫过后（波前走完浪区 + 锯齿余量），按行错峰从无到有
+		const SCENE_FADE = { dur: 1.8, guard: 6, stagger: 0.1 };
 		const fadeStart =
 			artMode === "shadow"
-				? SWEEP.delay + (SWEEP.patch + SWEEP.cut + paddedArtW + 2 + TAGLINE_FADE.guard) / SWEEP.speed
+				? SWEEP.delay + (SWEEP.patch + SWEEP.cut + paddedArtW + 2 + SCENE_FADE.guard) / SWEEP.speed
 				: 0.6;
-		let taglineA = 1;
-		if (Number.isFinite(now)) {
-			const fx = (now - fadeStart) / TAGLINE_FADE.dur;
-			if (fx <= 0) taglineA = 0;
-			else if (fx < 1) taglineA = fx * fx * (3 - 2 * fx); // smoothstep
+		const rowA = (delay: number): number => {
+			if (!Number.isFinite(now)) return 1;
+			const x = (now - fadeStart - delay) / SCENE_FADE.dur;
+			if (x <= 0) return 0;
+			if (x >= 1) return 1;
+			return x * x * (3 - 2 * x); // smoothstep
+		};
+		const starA = rowA(0);
+		const taglineA = rowA(0);
+		const modelA = rowA(0.15);
+		const cwdA = rowA(0.3);
+		const tipA = (i: number): number => rowA(0.1 + i * SCENE_FADE.stagger);
+		const taglineColor = taglineA >= 1 ? "accent" : faded("accent", taglineA);
+		// 纯文本降级模式：LOGO 文本同样淡入（无扫浪）
+		if (artMode === "text") {
+			artRows = [centerSpans(BRAND.toUpperCase(), leftWidth, faded("accent", starA), true, starA)];
 		}
-		const taglineColor = taglineA >= 1 ? "accent" : mix(BG, "#7fd7c4", taglineA);
 
 		const empty: Span[] = [{ text: "" }];
 		const leftLines: Span[][] =
 			artMode === "shadow"
 				? [
-						starfieldSpans(leftWidth, 101),
+						starfieldSpans(leftWidth, 101, starA),
 						...artRows,
-						starfieldSpans(leftWidth, 202),
-						centerSpans(TAGLINE, leftWidth, taglineColor, true),
-						centerSpans(`${model} · ${effort}`, leftWidth, "muted"),
-						centerSpans(cwd, leftWidth, "dim"),
+						starfieldSpans(leftWidth, 202, starA),
+						centerSpans(TAGLINE, leftWidth, taglineColor, true, taglineA),
+						centerSpans(`${model} · ${effort}`, leftWidth, faded("muted", modelA), undefined, modelA),
+						centerSpans(cwd, leftWidth, faded("dim", cwdA), undefined, cwdA),
 					]
 				: [
 						...artRows,
-						starfieldSpans(leftWidth, 303),
-						centerSpans(TAGLINE, leftWidth, taglineColor, true),
-						centerSpans(`${model} · ${effort}`, leftWidth, "muted"),
-						centerSpans(cwd, leftWidth, "dim"),
+						starfieldSpans(leftWidth, 303, starA),
+						centerSpans(TAGLINE, leftWidth, taglineColor, true, taglineA),
+						centerSpans(`${model} · ${effort}`, leftWidth, faded("muted", modelA), undefined, modelA),
+						centerSpans(cwd, leftWidth, faded("dim", cwdA), undefined, cwdA),
 					];
 
 		const tipDivider = "─".repeat(Math.max(8, Math.min(rightWidth || 16, 22)));
 		const [cmd0 = "", cmd1 = "", cmd2 = "", cmd3 = "", cmd4 = ""] = TIP_COMMANDS;
-		const tipLines: Span[][] = [
-			[{ text: "" }],
-			[{ text: "Welcome", color: "accent", bold: true }],
-			[{ text: ASK_LINE, color: "muted" }],
-			[{ text: tipDivider, color: "accent" }],
-			[{ text: "Commands", color: "accent", bold: true }],
-			[{ text: cmd0, color: "muted" }],
-			[{ text: cmd1, color: "muted" }],
-			[{ text: cmd2, color: "muted" }],
-			[{ text: cmd3, color: "muted" }],
-			[{ text: cmd4, color: "muted" }],
-			[{ text: "" }],
+		const tipRows: Array<[string, string | null, boolean]> = [
+			["", null, false],
+			["Welcome", "accent", true],
+			[ASK_LINE, "muted", false],
+			[tipDivider, "accent", false],
+			["Commands", "accent", true],
+			[cmd0, "muted", false],
+			[cmd1, "muted", false],
+			[cmd2, "muted", false],
+			[cmd3, "muted", false],
+			[cmd4, "muted", false],
+			["", null, false],
 		];
-
+		const tipLines: Span[][] = tipRows.map((row, i) => {
+			const a = tipA(i);
+			// 透明度 0：不发字形，纯空格占位
+			return [
+				{
+					text: a <= 0 ? ghostText(row[0]) : row[0],
+					color: row[1] && a > 0 ? faded(row[1], a) : undefined,
+					bold: row[2],
+				},
+			];
+		});
 		const title: Span[] = [{ text: BRAND, color: "accent", bold: true }, { text: ` v${VERSION}` }];
 
 		const lines: Span[][] = [...borderLine("╭", title, "╮", width)];
@@ -646,6 +724,9 @@ export function installBrandingHeader(pi: ExtensionAPI, ctx: ExtensionContext): 
 	ctx.ui.setHeader((tui) => {
 		header?.dispose();
 		header = new BrandingHeader(pi, ctx, tui);
+		// pi-open-tui 启动时直接清屏，Windows Terminal 会把旧页眉留在回滚区。
+		// 接管时由 pi 完整重绘，清除旧帧并同步光标状态；后续动画仍按差分重绘。
+		tui.requestRender(true);
 		return header;
 	});
 	return () => {
