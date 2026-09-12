@@ -2,22 +2,35 @@
 
 本目录说明六个只读诊断工具的调用方式、返回字段和限制。设计理由见 [design](../design/tool/sys_design.md)，验证方法见 [测试指南](../test/README.md)。
 
-| 要解决的问题 | 工具 | 实现 |
+## 分类
+
+现有 6 个注册工具全部是查询类，执行类为空。
+
+| 类别 | 判据 | 当前数量 |
 |---|---|---|
-| 目录里谁占空间 | [ls](ls.md) | [ls.ts](../../agent/home/extensions/diagnostics/ls.ts) |
-| 磁盘容量、型号、健康与占用 | [disk](disk.md) | [disk.ts](../../agent/home/extensions/diagnostics/disk.ts) |
-| CPU、内存、GPU、IO 与传感器 | [sys](sys.md) | [sys.ts](../../agent/home/extensions/diagnostics/sys.ts) |
-| 开机会启动什么 | [startup](startup.md) | [startup.ts](../../agent/home/extensions/diagnostics/startup.ts) |
-| 崩溃、蓝屏、服务与登录历史 | [eventlog](eventlog.md) | [eventlog-core.ts](../../agent/home/extensions/diagnostics/eventlog-core.ts) |
-| 设备识别与驱动状态 | [driver](driver.md) | [driver-core.ts](../../agent/home/extensions/diagnostics/driver-core.ts) |
-| 维护共享目录大小缓存 | [wz-index](wz-index.md)（内部模块） | [wz-index.ts](../../agent/home/extensions/diagnostics/wz-index.ts) |
+| 查询类 | 只读。不改注册表、设备状态、系统配置和用户文件 | 6 |
+| 执行类 | 调用会改动上述状态 | 0 |
+
+分类只用于文档组织。pi 的工具注册没有分类字段，模型看到的工具仍然是一份平铺清单。新增工具按上表判据归类：会写注册表、启停服务、改动设备状态或改删文件的属于执行类。
+
+## 工具一览
+
+| 要解决的问题 | 工具 | 子功能 | 实现 |
+|---|---|---|---|
+| 目录里谁占空间 | [ls](ls.md) | 无参数 | [ls.ts](../../agent/home/extensions/diagnostics/ls.ts) |
+| 磁盘容量、型号、健康与占用 | [disk](disk.md) | `space`、`info`、`health`、`usage`、`all` | [disk.ts](../../agent/home/extensions/diagnostics/disk.ts) |
+| CPU、内存、GPU、IO 与传感器 | [sys](sys.md) | `overview`、`proc`、`io`、`gpu`、`sensor` | [sys.ts](../../agent/home/extensions/diagnostics/sys.ts) |
+| 开机会启动什么 | [startup](startup.md) | 无参数 | [startup.ts](../../agent/home/extensions/diagnostics/startup.ts) |
+| 崩溃、蓝屏、服务与登录历史 | [eventlog](eventlog.md) | `recent`、`boot`、`crash`、`service`、`disk`、`security`、`query`、`detail` | [eventlog-core.ts](../../agent/home/extensions/diagnostics/eventlog-core.ts) |
+| 设备识别与驱动状态 | [driver](driver.md) | `problem`、`core`、`external`、`find` | [driver-core.ts](../../agent/home/extensions/diagnostics/driver-core.ts) |
+| 维护共享目录大小缓存 | [wz-index](wz-index.md)（内部模块） | 无（不注册为工具） | [wz-index.ts](../../agent/home/extensions/diagnostics/wz-index.ts) |
 
 ## 使用约定
 
 - 支持范围为 Windows 10/11 x64；裁剪系统、PE 和特殊介质的可用性需单独验证。
 - 工具不改注册表、设备状态或系统配置。存储扫描会在 `wiztree/tmp` 写入临时 CSV，并在结束时尝试清理；目录大小缓存保存在进程内。
 - 文档中的 `工具名({...})` 是工具调用示意，不是可直接粘贴到 PowerShell 的命令。
-- 多功能工具用 `scope` 选择子功能；`ls`、`startup` 不使用 scope。各工具的必填参数见对应页面。
+- 多功能工具用 `scope` 选择子功能；`ls`、`startup` 不使用 scope。默认值和必填参数见对应页面。
 - 示例数值仅用于说明字段，不能作为其他机器的通过标准。
 
 ## 返回结构
