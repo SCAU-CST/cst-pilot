@@ -2,14 +2,23 @@
 
 > Computer Service Team · Portable Diagnostics Kit
 
+<p align="center">
+  <img src="assets/logo.png" alt="CST Pilot" width="820">
+</p>
+
+<p align="center">
+  <b>下载</b>：<a href="https://github.com/SCAU-CST/cst-pilot/releases/latest">最新发行版</a> · <a href="https://github.com/SCAU-CST/cst-pilot/releases">全部版本</a>
+</p>
+
 **CST Pilot** 是计算机维护队（Computer Service Team, **CST**）的便携式专用Agent。
 
 特点：
-1. 基于Pi改的定制Agent，专门用于给计维队员提供便捷的AI技术支持。
-2. 定制Agent有专门的提示词和SKILLS。并且有专用的工具获取磁盘状态，进程占用状态等。
-3. 默认只向模型开放读取、检索与诊断工具；诊断工具不修改系统配置。这是工具配置限制，不是操作系统级沙箱，手动命令与外部扩展仍需可信。
-4. 高效：使用 WizTree 等第三方工具加速磁盘扫描；各组件许可证见第三方声明。
-5. 即插即用。本项目发行版可存放在U盘，内置所有所需的环境。不必在机主电脑上安装任何东西。
+
+1. **基于热门开源项目**。基于Pi改的定制Agent，专门用于给计维队员提供便捷的AI技术支持。
+2. **充足的定制**。定制Agent有专门的提示词和SKILLS。并且有专用的工具获取磁盘状态，进程占用状态等。
+3. **安全**：默认只向模型开放读取、检索与诊断工具。高度可控。
+4. **高效**：使用 WizTree 等第三方工具加速磁盘扫描
+5. **即插即用**。本项目发行版可存放在U盘，内置所有所需的环境。不必在机主电脑上安装任何东西。
 
 ## 功能
 
@@ -25,7 +34,7 @@
 
 ### 未来计划
 
-自制 Web 操作界面，随便携发行版提供；目标是在本项目开放的能力范围内完整替代 TUI 操作，保留 TUI 通道。详见 [Web 决策](doc/design/web/decision.md)。
+自制 Web 操作界面，随便携发行版提供；目标是在本项目开放的能力范围内完整替代 TUI 操作，保留 TUI 通道。目前仍然在计划中。
 
 ## 目录结构
 
@@ -34,13 +43,14 @@
 ```
 cst-pilot/
 |-- pi.cmd                     TUI 入口（发行版同款）
-|-- doc/
-|-- pack/
+|-- assets/                    品牌资源：logo.png 及其生成脚本
+|-- doc/                       产品、设计、工具与测试文档
+|-- pack/                      发行版构建脚本
 |-- agent/
 |   |-- node_modules/          pi 及依赖（不入库）
 |   `-- home/
-|       |-- extensions/        诊断工具
-|       |-- skills/
+|       |-- extensions/        扩展：branding 品牌页眉、diagnostics 诊断工具
+|       |-- skills/            诊断工具的使用说明
 |       `-- bin/, npm/, fff/, sessions/, *.json   运行产物与密钥（不入库）
 |-- node/                      Node.js（不入库）
 |-- pwsh/, wiztree/, lhm/      便携运行时（不入库）
@@ -52,6 +62,7 @@ cst-pilot/
 ```
 cst-pilot/
 |-- pi.cmd
+|-- assets/                    品牌资源（README 插图）
 |-- agent/
 |   |-- .runtime/              pi 官方二进制与运行资源（隐藏；经 pi.cmd 调用）
 |   `-- home/
@@ -66,16 +77,10 @@ cst-pilot/
 
 发行包不含密钥与运行态；首跑在 pi 内执行 `/login` 填写 key。
 
-### Web UI（自制 @cst-pilot/web，规划中）
-
-后续按 [Todo #9](doc/Todo.md) 自制 pi 扩展，目标是与 TUI 共用当前会话，并随便携发行版提供现代版和兼容版页面。
-
-规划通过 `pi.cmd` 启动后执行 `/web` 打开浏览器，`/web o` 选择兼容版；仅监听本机回环地址。Web 将覆盖会话、模型、凭据配置与本项目扩展交互，方案见 [Web 决策](doc/design/web/decision.md)。当前尚未实现，Web 通道暂缺。
-
 
 ## 注意事项
 
-1. 本仓库只含源码与文档，完整运行环境请用 pack 脚本构建（见下）。
+1. 本仓库只含源码与文档，完整运行环境由 `pack/pack.mjs` 构建。
 2. 当前实现中，提示词为 `APPEND_SYSTEM.md`而非熟知的`AGENTS.md`，原因见 [doc/Notice.md](doc/Notice.md)
 3. 模型URL和API当然是不包括的。如果你是CST的队员且需要相关资源，请联系你们的委员。
 4. WizTree 仅个人使用免费、商业使用需授权，见 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)。
@@ -83,7 +88,7 @@ cst-pilot/
 
 ## 使用方式
 
-下载最新的发行版。把整个目录拷到电脑/U盘或者任何地方，然后双击运行：
+从 [Releases](https://github.com/SCAU-CST/cst-pilot/releases/latest) 下载最新的发行版（`cst-pilot-<version>.zip`），把整个目录拷到电脑/U盘或者任何地方，然后双击运行：
 
 ```
 pi.cmd
@@ -91,6 +96,8 @@ pi.cmd
 
 **首次运行**需在 pi 内执行 `/login` 选择 provider 并填写 API key（凭据写入本机 `agent/home/auth.json`）。
 
+开发版仅代码开发。需要自备环境。
+
 ## 致谢
 
-名称中的 **pi** 致敬本项目所基于的 [pi coding agent](https://github.com/earendil-works/pi)。感谢这一伟大的开源项目。
+名称中的 **pilot** 致敬本项目所基于的 [pi coding agent](https://github.com/earendil-works/pi)。感谢这一伟大的开源项目。
