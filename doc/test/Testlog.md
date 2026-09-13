@@ -35,7 +35,7 @@ B03/B07 的 SMART 与 B30/B31 的 Security 当时走权限降级；B06/B22 参�
 | disk info 的 drive 过滤失效 | 卷与关联物理盘双过滤；本地 13/13，H: 复查仅目标卷/盘 | 2026-09-05 又修复单条结果形态等问题；关联失败仍须标明未过滤物理盘 |
 | crash 误收第三方复用 ID | 当时增加 Error 过滤与 atypical，VMware 误报消失 | 当时的过滤会漏 WER；2026-09-05 改为提供程序/ID 配对，WER/Hang 不限级别 |
 
-真实崩溃样本的跨机器复核仍不能由当时 crash total=0 代替。完整修复列表见 [审查报告](../review/2026-09-05-code-correctness.md)。
+真实崩溃样本的跨机器复核仍不能由当时 crash total=0 代替。
 
 **待查口径：** proc.totalProcs=263，io.totalProcs=428，差 165；当时独立 Get-Process=450、Win32_Process=465，差 15。采样来源和时间不同，尚无记录证明该差异已解释或修复，保留为待查项。
 
@@ -148,7 +148,6 @@ B03/B07 的 SMART 与 B30/B31 的 Security 当时走权限降级；B06/B22 参�
 - 执行者与模型：发行树内邻居 pi 实例（herdr wB:p9），deepseek-v4-flash @ opencode-go（key 随包 auth.json，PI_OFFLINE=1）；核查者为本机独立 PowerShell
 - 范围及未执行项目：B01–B31 全部执行，无跳项；管理员侧变体（B03 双权限、B30/B31 管理员查询）未做——本机无管理员会话
 - 总耗时：Agent 侧 12 分 29 秒（TPS 66.9 tok/s，上下文 125k/1M）
-- 完整逐项报告：[2026-09-06 build7 邻居验收报告](2026-09-06-build7-report.md)
 
 | ID | 调用与关键返回 | 独立核查 | 结论 | 耗时 |
 |---|---|---|---|---|
