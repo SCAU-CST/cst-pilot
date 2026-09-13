@@ -1,6 +1,6 @@
 # 工具文档
 
-本目录说明六个只读诊断工具的调用方式、返回字段和限制。设计理由见 [design](../design/tool/sys_design.md)，验证方法见 [测试指南](../test/README.md)。
+本目录说明七个注册工具的调用方式、返回字段和限制。设计理由见 [design](../design/tool/sys_design.md)，验证方法见 [测试指南](../test/README.md)。
 
 ## 分类
 
@@ -9,9 +9,11 @@
 | 类别 | 判据 | 当前数量 |
 |---|---|---|
 | 查询类 | 只读。不改注册表、设备状态、系统配置和用户文件 | 6 |
-| 执行类 | 调用会改动上述状态 | 0 |
+| 执行类 | 调用会改动上述状态 | 1 |
 
 分类只用于文档组织。pi 的工具注册没有分类字段，模型看到的工具仍然是一份平铺清单。新增工具按上表判据归类：会写注册表、启停服务、改动设备状态或改删文件的属于执行类。
+
+执行类目前只有 runbook：它写文件，但只写工具包自身的 `outbox\`，不碰机主系统。
 
 ## 工具一览
 
@@ -23,12 +25,14 @@
 | 开机会启动什么 | [startup](startup.md) | 无参数 | [startup.ts](../../agent/home/extensions/diagnostics/startup.ts) |
 | 崩溃、蓝屏、服务与登录历史 | [eventlog](eventlog.md) | `recent`、`boot`、`crash`、`service`、`disk`、`security`、`query`、`detail` | [eventlog-core.ts](../../agent/home/extensions/diagnostics/eventlog-core.ts) |
 | 设备识别与驱动状态 | [driver](driver.md) | `problem`、`core`、`external`、`find` | [driver-core.ts](../../agent/home/extensions/diagnostics/driver-core.ts) |
+| 让队员手动执行修复命令 | [runbook](runbook.md) | 无参数 | [runbook.ts](../../agent/home/extensions/diagnostics/runbook.ts) |
 | 维护共享目录大小缓存 | [wz-index](wz-index.md)（内部模块） | 无（不注册为工具） | [wz-index.ts](../../agent/home/extensions/diagnostics/wz-index.ts) |
 
 ## 使用约定
 
 - 支持范围为 Windows 10/11 x64；裁剪系统、PE 和特殊介质的可用性需单独验证。
 - 工具不改注册表、设备状态或系统配置。存储扫描会在 `wiztree/tmp` 写入临时 CSV，并在结束时尝试清理；目录大小缓存保存在进程内。
+- runbook 是唯一写文件的工具，写入范围限于工具包 `outbox\`，只生成 txt 清单。
 - 文档中的 `工具名({...})` 是工具调用示意，不是可直接粘贴到 PowerShell 的命令。
 - 多功能工具用 `scope` 选择子功能；`ls`、`startup` 不使用 scope。默认值和必填参数见对应页面。
 - 示例数值仅用于说明字段，不能作为其他机器的通过标准。
@@ -41,7 +45,7 @@
 { content: [{ type: "text", text: JSON.stringify(result) }], details: result }
 ```
 
-业务数据的包装并不完全相同：`sys`、`driver`、`eventlog` 按 scope 包装，`startup` 使用 `startup` 字段；`disk` 按数据种类返回，`ls` 直接返回目录对象。
+业务数据的包装并不完全相同：`sys`、`driver`、`eventlog` 按 scope 包装，`startup`、`runbook` 使用同名字段；`disk` 按数据种类返回，`ls` 直接返回目录对象。
 
 | 字段 | 如何理解 |
 |---|---|
@@ -78,7 +82,7 @@ Windows 原生数据通过仓库自带的 `pwsh/pwsh.exe` 采集，使用 `-NoPr
 
 - `disk.ts`、`driver.ts`、`eventlog.ts`：工具注册和参数 schema；对应 core 文件负责采集与路由。
 - `sys.ts`：工具注册与采集；`sys-commands.ts`：PowerShell 查询模板。
-- `startup.ts`、`ls.ts`：较小的独立工具模块。
+- `startup.ts`、`ls.ts`、`runbook.ts`：较小的独立工具模块。
 - `runtime.ts`：便携程序路径、子进程、解码与 JSON 边界；`pwsh-data.ts`：PowerShell 数据表达式和采集包装。
 - `result.ts`：模型输出体积限制与整次失败上报；`driver-data.ts`：设备结果 schema 和运行时校验。
 
