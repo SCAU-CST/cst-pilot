@@ -1,20 +1,21 @@
-# AGENTS.md — cst-pilot
+# 提示词
 
-电脑维修便携诊断工具链，基于 pi 的隔离实例。
-
-先读 `doc\PRD.md` 和 `doc\Notice.md`，再按需读 `doc\design\tool\*_design.md`、`doc\design\web\*.md` 与 `doc\tool\*.md`；任务清单见 `doc\Todo.md`。
+## 初始化
+1. 若从未阅读过，按照一下顺序阅读文档，获取关键信息
+  1. 基本情况：`doc\PRD.md`、`README.md`、通过ls获取文档结构。
+  2. 开发情况和已开发内容： `doc\Todo.md`、`doc\tool\README.md`、`doc\Notice.md`、`doc\test\README.md`
+2. 请大概了解`earendil-works/pi`，本项目基于Pi二次开发，但是要遵循Pi的工程规范。有充足的文档可供后续阅读。
 
 ## 文档规范
 
-`doc/` 下的文档按以下规则写。
-
 1. 直白描述。不用比喻、拟人、夸张，例如不写「吃掉退路」「白花力气」。
-2. 中文母语语序。一句话说一件事，从句拆成独立句。不写「我们」「大家」，不堆程度副词。
+2. 中文母语语序。一句话说一件事，从句拆成独立句。不写「我们」「大家」，不加程度副词。
 3. 结构化优先。
    - 对比、映射、清单用表格。
    - 步骤用有序列表，并列项用无序列表。
    - 每节先给结论，再给理由。
    - 单段不超过 3 句。
+4. 提高信噪比，对于未来很可能不再使用的信息，如各种旧实现，历史决策，应当不保留。仅保留对当下和未来有价值的内容。
 
 ## 运行
 
@@ -26,5 +27,5 @@ pi.cmd
 
 ```bash
 export WSLENV=PI_CODING_AGENT_DIR
-export PI_CODING_AGENT_DIR='E:\Learning\Programming\cst-pilot\agent\home'
+export PI_CODING_AGENT_DIR='项目目录'
 ```
