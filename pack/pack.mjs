@@ -81,7 +81,7 @@ const CONFIG = {
     { src: "assets", dst: "assets", exclude: ["make-logo.cjs"] }, // 只发行图片，不带生成脚本
     { src: "doc", dst: "doc", exclude: ["test/"] },
     { src: "pwsh", dst: "pwsh", exclude: ["Schemas/", "preview/", "Install-PowerShellRemoting.ps1", "RegisterManifest.ps1"] },
-    { src: "wiztree", dst: "wiztree", exclude: ["WizTree3.ini", "tmp/"] },
+    { src: "wiztree", dst: "wiztree", exclude: ["WizTree3.ini", "WizTree3.ini.bad", "tmp/"] }, // 运行态配置与备份不进发行包
     { src: "lhm", dst: "lhm", exclude: [] },
     { src: "agent/home/bin", dst: "agent/home/bin", exclude: [] },
     { src: "agent/home/skills", dst: "agent/home/skills", exclude: [] },

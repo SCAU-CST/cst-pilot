@@ -62,6 +62,14 @@ if errorlevel 1 goto :state_fail
 copy /y "%~f0" "%STATE%\data\.write-probe" >nul 2>nul
 if errorlevel 1 goto :state_fail
 
+rem ---- drop the WizTree config at every start. The ini holds per-host
+rem ---- display state (DPI, window geometry, row and column sizes) and
+rem ---- makes WizTree stall once the kit moves to another machine.
+rem ---- Renamed, not deleted: a supporter code may live in the file, and
+rem ---- WizTree rebuilds defaults on its next run. Fixed name, so the
+rem ---- backup cannot pile up. A locked file makes this fail silently.
+if exist "%ROOT%wiztree\WizTree3.ini" move /y "%ROOT%wiztree\WizTree3.ini" "%ROOT%wiztree\WizTree3.ini.bad" >nul 2>nul
+
 set "TMP=%STATE%\tmp"
 set "TEMP=%STATE%\tmp"
 set "XDG_CACHE_HOME=%STATE%\cache"

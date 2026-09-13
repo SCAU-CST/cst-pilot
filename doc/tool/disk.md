@@ -79,6 +79,8 @@ flowchart TD
 
 WizTree 随包提供，以 `/admin=0` 调用。NTFS 按 `wiztree-mft` 标注，其他文件系统按 `wiztree-walk` 标注；探测失败时在 notice 中说明，不能仅凭工具名认定使用了 MFT。文件系统探测使用 fsutil，并以 CIM 兜底；缓存复用前校验卷身份。
 
+`wiztree\WizTree3.ini` 是 WizTree 的显示状态（DPI、按分辨率分组的窗口坐标、行列宽），随机器而变，不参与 CLI 结果。`pi.cmd` 每次启动把它重命名为 `WizTree3.ini.bad`，由 WizTree 自行重建默认值，避免工具包换机器后扫描卡住。理由见 [Notice](../Notice.md)。
+
 CSV 按路径和字节数解析，不依赖本地化表头；日期使用独立匹配。排行采用流式 Top-N，避免收集全部文件再排序。可识别卷的目录和大文件数据同时写入 [共享缓存](wz-index.md)，供后续 ls 使用；只有已扫描路径能从中受益。
 
 **Node 降级路径仅返回目录排行**，不保证有 topFiles、extAgg、staleFiles。它使用 50 万次 stat 预算，附带 `stats`、`truncated` 和可能的 `denied`；被拒绝访问或预算外的内容不计入，总量可能是下界。
