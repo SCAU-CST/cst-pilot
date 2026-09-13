@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // ============================================================
-// pack.mjs — cst-pilot 0.3 发行构建脚本
+// pack.mjs — cst-pilot 0.4 发行构建脚本
 //
 // 官方 pi.exe + 本仓库内容。测试使用副本，ZIP 按清单生成。
 //
@@ -25,7 +25,7 @@ import { smokeRelease } from "./smoke.mjs";
 // ---------- 构建配置（发行工程单一事实源） ----------
 
 const CONFIG = {
-  VERSION: "0.3.0",
+  VERSION: "0.4.0",
   PI_VERSION: "0.85.1",
   PI_EXE_SHA256: "2d4d351da30bfe23a473032e66a571b238763565aa93754e74f4a939de13f195",
   ESBUILD_VERSION: "0.25.10",
@@ -104,6 +104,7 @@ const CONFIG = {
     defaultProjectTrust: "never",
     enableInstallTelemetry: false,
     lastChangelogVersion: "0.85.1",
+    theme: "dark",
     packages: ["./packages/pi-fff", "./packages/pi-open-tui", "./packages/pi-web-access"],
   },
 };
