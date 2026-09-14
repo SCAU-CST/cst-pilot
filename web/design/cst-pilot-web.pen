@@ -6,10 +6,10 @@
       "id": "bi8Au",
       "x": 0,
       "y": 0,
-      "name": "Frame",
+      "name": "Draft 1920x1080",
       "clip": true,
-      "width": 800,
-      "height": 600,
+      "width": 1920,
+      "height": 1080,
       "fill": "#FFFFFF",
       "layout": "none"
     }
