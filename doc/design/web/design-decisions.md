@@ -2,7 +2,7 @@
 
 ## 真源
 
-仓库根的 `DESIGN.md` 是唯一真源。令牌文件、色卡图与 HeroUI 的 CSS 变量都与它对齐，冲突时以它为准。本文件只记大方向，同步方式见[设计文档索引](../index.md)。
+仓库根的 `DESIGN.md` 是唯一真源。令牌文件、色卡图与 HeroUI 的 CSS 变量都与它对齐，冲突时以它为准。本文件只记大方向，同步方式见[设计文档索引](../README.md)。
 
 ## 组件系统
 
@@ -11,7 +11,6 @@
 | 组件库 | HeroUI v3（`@heroui/react` + `@heroui/styles` 3.2.5），要求 React 19 与 Tailwind v4 |
 | 现代版 | 直接用 HeroUI v3 |
 | 兼容版 | 复用 v3 的 `heroui.min.css` 做 CSS 降级；组件用 React 18 自己实现，DOM 结构与类名跟 v3 一致 |
-| 设计侧 | Pen 的 `pencil-heroui.pen` 复制为 `web/design/heroui.lib.pen`，固定版本 |
 
 ## 设计标准
 
