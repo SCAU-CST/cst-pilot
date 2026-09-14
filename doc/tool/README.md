@@ -4,29 +4,25 @@
 
 ## 分类
 
-现有 6 个注册工具全部是查询类，执行类为空。
+现有 7 个注册工具，6 个查询类，1 个执行类。
 
-| 类别 | 判据 | 当前数量 |
-|---|---|---|
-| 查询类 | 只读。不改注册表、设备状态、系统配置和用户文件 | 6 |
-| 执行类 | 调用会改动上述状态 | 1 |
+1. 查询类：只读，不改注册表、设备状态、系统配置和用户文件。
+2. 执行类：调用会改动上述状态。
 
-分类只用于文档组织。pi 的工具注册没有分类字段，模型看到的工具仍然是一份平铺清单。新增工具按上表判据归类：会写注册表、启停服务、改动设备状态或改删文件的属于执行类。
+分类只用于文档组织。pi 的工具注册没有分类字段，模型看到的工具仍然是一份平铺清单。新增工具按上述判据归类：会写注册表、启停服务、改动设备状态或改删文件的属于执行类。
 
 执行类目前只有 runbook：它写文件，但只写工具包自身的 `outbox\`，不碰机主系统。
 
 ## 工具一览
 
-| 要解决的问题 | 工具 | 子功能 | 实现 |
-|---|---|---|---|
-| 目录里谁占空间 | [ls](ls.md) | 无参数 | [ls.ts](../../agent/home/extensions/diagnostics/ls.ts) |
-| 磁盘容量、型号、健康与占用 | [disk](disk.md) | `space`、`info`、`health`、`usage`、`all` | [disk.ts](../../agent/home/extensions/diagnostics/disk.ts) |
-| CPU、内存、GPU、IO 与传感器 | [sys](sys.md) | `overview`、`proc`、`io`、`gpu`、`sensor` | [sys.ts](../../agent/home/extensions/diagnostics/sys.ts) |
-| 开机会启动什么 | [startup](startup.md) | 无参数 | [startup.ts](../../agent/home/extensions/diagnostics/startup.ts) |
-| 崩溃、蓝屏、服务与登录历史 | [eventlog](eventlog.md) | `recent`、`boot`、`crash`、`service`、`disk`、`security`、`query`、`detail` | [eventlog-core.ts](../../agent/home/extensions/diagnostics/eventlog-core.ts) |
-| 设备识别与驱动状态 | [driver](driver.md) | `problem`、`core`、`external`、`find` | [driver-core.ts](../../agent/home/extensions/diagnostics/driver-core.ts) |
-| 让队员手动执行修复命令 | [runbook](runbook.md) | 无参数 | [runbook.ts](../../agent/home/extensions/diagnostics/runbook.ts) |
-| 维护共享目录大小缓存 | [wz-index](wz-index.md)（内部模块） | 无（不注册为工具） | [wz-index.ts](../../agent/home/extensions/diagnostics/wz-index.ts) |
+1. 目录里谁占空间：[ls](ls.md)，无参数，实现 [ls.ts](../../agent/home/extensions/diagnostics/ls.ts)
+2. 磁盘容量、型号、健康与占用：[disk](disk.md)，`space`、`info`、`health`、`usage`、`all`，实现 [disk.ts](../../agent/home/extensions/diagnostics/disk.ts)
+3. CPU、内存、GPU、IO 与传感器：[sys](sys.md)，`overview`、`proc`、`io`、`gpu`、`sensor`，实现 [sys.ts](../../agent/home/extensions/diagnostics/sys.ts)
+4. 开机会启动什么：[startup](startup.md)，无参数，实现 [startup.ts](../../agent/home/extensions/diagnostics/startup.ts)
+5. 崩溃、蓝屏、服务与登录历史：[eventlog](eventlog.md)，`recent`、`boot`、`crash`、`service`、`disk`、`security`、`query`、`detail`，实现 [eventlog-core.ts](../../agent/home/extensions/diagnostics/eventlog-core.ts)
+6. 设备识别与驱动状态：[driver](driver.md)，`problem`、`core`、`external`、`find`，实现 [driver-core.ts](../../agent/home/extensions/diagnostics/driver-core.ts)
+7. 让队员手动执行修复命令：[runbook](runbook.md)，无参数，实现 [runbook.ts](../../agent/home/extensions/diagnostics/runbook.ts)
+8. 维护共享目录大小缓存：[wz-index](wz-index.md)（内部模块），无子功能、不注册为工具，实现 [wz-index.ts](../../agent/home/extensions/diagnostics/wz-index.ts)
 
 ## 使用约定
 
@@ -47,13 +43,13 @@
 
 业务数据的包装并不完全相同：`sys`、`driver`、`eventlog` 按 scope 包装，`startup`、`runbook` 使用同名字段；`disk` 按数据种类返回，`ls` 直接返回目录对象。
 
-| 字段 | 如何理解 |
-|---|---|
-| `notice` / `*Notice` | 数据口径、缺失能力或降级原因 |
-| `error` | 当前查询或数据源失败；可能位于子对象内 |
-| `degraded` / `collectionErrors` | 部分采集失败，成功字段仍可使用 |
-| `counterErrors` / `smartErrors` | 对应数据源的具体错误 |
-| `null` / 空数组 | 结合错误字段判断；不能一律解释为正常、无设备或零用量 |
+字段含义：
+
+1. `notice` / `*Notice`：数据口径、缺失能力或降级原因。
+2. `error`：当前查询或数据源失败；可能位于子对象内。
+3. `degraded` / `collectionErrors`：部分采集失败，成功字段仍可使用。
+4. `counterErrors` / `smartErrors`：对应数据源的具体错误。
+5. `null` / 空数组：结合错误字段判断；不能一律解释为正常、无设备或零用量。
 
 整次查询无法完成时，execute 抛错，由 pi 标记 `isError`；失败原因仍写入给模型的错误文本。可用数据伴随部分数据源失败时，保留成功结果及 `degraded`、`notice` 等说明，不将正常空清单当成失败。
 
@@ -67,12 +63,10 @@ Windows 原生数据通过仓库自带的 `pwsh/pwsh.exe` 采集，使用 `-NoPr
 
 ## 提示词
 
-| 注册字段 | 用途 |
-|---|---|
-| `description` / 参数 schema | 向模型解释工具和参数 |
-| `promptSnippet` | 加入系统提示词的工具列表 |
-| `promptGuidelines` | 提供工具选择和使用规则 |
-| `label` | 仅用于 TUI 显示 |
+1. `description` / 参数 schema：向模型解释工具和参数。
+2. `promptSnippet`：加入系统提示词的工具列表。
+3. `promptGuidelines`：提供工具选择和使用规则。
+4. `label`：仅用于 TUI 显示。
 
 覆盖内置工具时必须自带 `promptSnippet`，否则可能从工具提示列表中消失。`ls` 使用同名注册覆盖内置版本。
 
