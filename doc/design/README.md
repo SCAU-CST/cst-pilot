@@ -7,10 +7,10 @@
 3. [web/decision.md](web/decision.md)：Web 端产品与技术方向
 4. [web/browser-support.md](web/browser-support.md)：两档浏览器基线与现场策略
 5. [web/tech-stack-raw.md](web/tech-stack-raw.md)：技术栈原始讨论稿
-6. [web/asset/](web/asset/)：设计资产，令牌文件与色卡图
+6. [web/asset/](web/asset/)：设计资产。令牌文件、色卡图与生成脚本
 7. [web/pen.md](web/pen.md)：Pen 操作建议与来源
 8. [tool/](tool/)：诊断工具设计文档
-
+9. [../../web/design/](../../web/design/)：Pen 画布文件。同级 `asset/` 放界面素材与[排版参考](../../web/design/asset/reference/)，`achieved/` 放已归档的备选方案
 
 ## 同步规则
 

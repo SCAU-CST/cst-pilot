@@ -4,7 +4,20 @@
 
 ## 建议
 
-1. 首选pen cli的操作方式
+1. 首选 pen cli 的操作方式。
+2. 让 Pen 桌面应用打开某个 .pen 文件，用 `Start-Process "D:\Pen\Pen.exe" "<绝对路径>"`。
+   `pen interactive --app desktop --in <file>` 只声明路径，不会真正打开文件。
+3. MCP 需要应用里有一个已打开的文件才能工作，否则报 `A file needs to be open in the editor`。
+4. 导出画布节点为图片，用 `execute` 里的 `Export(nodeIds, "png", 目录)`。
+   图片按节点 id 命名，不能指定文件名。
+   单张图最长边超过 8192 像素时会被等比缩小，长色卡要拆成多个画布再导出。
+5. `--enable-preview` 只在发生设计变更时才写预览图。
+   headless 模式（`pen interactive --out <file>`）只写 .pen，不导出图片。
+6. 新建的 .pen 文件画完节点后，导出图片可能全白：带子节点的 frame 不渲染，不带子节点的正常。
+   重启 Pen 应用并重新打开同一文件即可恢复。
+7. Pen 会留下多个后台进程。关掉窗口再 `Stop-Process -Name Pen` 往往只杀掉带窗口的那个，残留的
+   进程会让下次打开文件时读取旧的内存状态，改了 .pen 文件却看不到效果。
+   确认干净用 `Get-Process Pen` 看进程数归零。
 
 ## 来源
 
