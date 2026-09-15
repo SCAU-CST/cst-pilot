@@ -1,0 +1,1940 @@
+{
+  "$schema": "https://www.designtokens.org/schemas/2025.10/format.json",
+  "$description": "HeroUI v3 默认主题（@heroui/styles 3.2.5，themes/default/variables.css）的原始配色系统。解析自上游 CSS，用于与 CST Pilot 自有配色对照。light / dark 两组只收录各自主题块里声明的变量；两组都未声明的取 shared，shared 也未声明的取 primitive。每个令牌的 $extensions 记录上游原始 CSS 值；color-mix() 派生值已按 CSS Color 5 的 premultiplied alpha 规则预计算。",
+  "color": {
+    "$type": "color",
+    "primitive": {
+      "white": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            1,
+            0,
+            0
+          ],
+          "hex": "#ffffff"
+        },
+        "$extensions": {
+          "dev.heroui.source": "oklch(100% 0 0)"
+        }
+      },
+      "black": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0,
+            0,
+            0
+          ],
+          "hex": "#000000"
+        },
+        "$extensions": {
+          "dev.heroui.source": "oklch(0% 0 0)"
+        }
+      },
+      "snow": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.9911,
+            0,
+            0
+          ],
+          "hex": "#fcfcfc"
+        },
+        "$extensions": {
+          "dev.heroui.source": "oklch(0.9911 0 0)"
+        }
+      },
+      "eclipse": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.2103,
+            0.0059,
+            285.9
+          ],
+          "hex": "#18181b"
+        },
+        "$extensions": {
+          "dev.heroui.source": "oklch(0.2103 0.0059 285.89)"
+        }
+      }
+    },
+    "shared": {
+      "accent": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.6204,
+            0.195,
+            253.8
+          ],
+          "hex": "#0485f7"
+        },
+        "$extensions": {
+          "dev.heroui.source": "oklch(0.6204 0.195 253.83)"
+        }
+      },
+      "accent-foreground": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.9911,
+            0,
+            0
+          ],
+          "hex": "#fcfcfc"
+        },
+        "$extensions": {
+          "dev.heroui.source": "var(--snow)"
+        }
+      },
+      "success": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.7329,
+            0.1935,
+            150.8
+          ],
+          "hex": "#17c964"
+        },
+        "$extensions": {
+          "dev.heroui.source": "oklch(0.7329 0.1935 150.81)"
+        }
+      },
+      "success-foreground": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.2103,
+            0.0059,
+            285.9
+          ],
+          "hex": "#18181b"
+        },
+        "$extensions": {
+          "dev.heroui.source": "var(--eclipse)"
+        }
+      },
+      "field-border": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0,
+            0,
+            0
+          ],
+          "hex": "#000000",
+          "alpha": 0
+        },
+        "$extensions": {
+          "dev.heroui.source": "transparent"
+        }
+      }
+    },
+    "light": {
+      "background": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.9702,
+            0,
+            0
+          ],
+          "hex": "#f5f5f5"
+        },
+        "$extensions": {
+          "dev.heroui.source": "oklch(0.9702 0 0)"
+        }
+      },
+      "foreground": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.2103,
+            0.0059,
+            285.9
+          ],
+          "hex": "#18181b"
+        },
+        "$extensions": {
+          "dev.heroui.source": "var(--eclipse)"
+        }
+      },
+      "surface": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            1,
+            0,
+            0
+          ],
+          "hex": "#ffffff"
+        },
+        "$extensions": {
+          "dev.heroui.source": "var(--white)"
+        }
+      },
+      "surface-foreground": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.2103,
+            0.0059,
+            285.9
+          ],
+          "hex": "#18181b"
+        },
+        "$extensions": {
+          "dev.heroui.source": "var(--foreground)"
+        }
+      },
+      "surface-secondary": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.9524,
+            0.0013,
+            286.4
+          ],
+          "hex": "#efeff0"
+        },
+        "$extensions": {
+          "dev.heroui.source": "oklch(0.9524 0.0013 286.37)"
+        }
+      },
+      "surface-secondary-foreground": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.2103,
+            0.0059,
+            285.9
+          ],
+          "hex": "#18181b"
+        },
+        "$extensions": {
+          "dev.heroui.source": "var(--foreground)"
+        }
+      },
+      "surface-tertiary": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.9373,
+            0.0013,
+            286.4
+          ],
+          "hex": "#eaeaeb"
+        },
+        "$extensions": {
+          "dev.heroui.source": "oklch(0.9373 0.0013 286.37)"
+        }
+      },
+      "surface-tertiary-foreground": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.2103,
+            0.0059,
+            285.9
+          ],
+          "hex": "#18181b"
+        },
+        "$extensions": {
+          "dev.heroui.source": "var(--foreground)"
+        }
+      },
+      "overlay": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            1,
+            0,
+            0
+          ],
+          "hex": "#ffffff"
+        },
+        "$extensions": {
+          "dev.heroui.source": "var(--white)"
+        }
+      },
+      "overlay-foreground": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.2103,
+            0.0059,
+            285.9
+          ],
+          "hex": "#18181b"
+        },
+        "$extensions": {
+          "dev.heroui.source": "var(--foreground)"
+        }
+      },
+      "muted": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.5517,
+            0.0138,
+            285.9
+          ],
+          "hex": "#71717a"
+        },
+        "$extensions": {
+          "dev.heroui.source": "oklch(0.5517 0.0138 285.94)"
+        }
+      },
+      "scrollbar": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.2103,
+            0.0059,
+            285.9
+          ],
+          "hex": "#18181b",
+          "alpha": 0.15
+        },
+        "$extensions": {
+          "dev.heroui.source": "var(--scrollbar-thumb)"
+        }
+      },
+      "scrollbar-thumb": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.2103,
+            0.0059,
+            285.9
+          ],
+          "hex": "#18181b",
+          "alpha": 0.15
+        },
+        "$extensions": {
+          "dev.heroui.source": "color-mix(in oklch, var(--foreground) 15%, transparent)"
+        }
+      },
+      "scrollbar-track": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0,
+            0,
+            0
+          ],
+          "hex": "#000000",
+          "alpha": 0
+        },
+        "$extensions": {
+          "dev.heroui.source": "transparent"
+        }
+      },
+      "default": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.94,
+            0.001,
+            286.4
+          ],
+          "hex": "#ebebec"
+        },
+        "$extensions": {
+          "dev.heroui.source": "oklch(94% 0.001 286.375)"
+        }
+      },
+      "default-foreground": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.2103,
+            0.0059,
+            285.9
+          ],
+          "hex": "#18181b"
+        },
+        "$extensions": {
+          "dev.heroui.source": "var(--eclipse)"
+        }
+      },
+      "field-background": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            1,
+            0,
+            0
+          ],
+          "hex": "#ffffff"
+        },
+        "$extensions": {
+          "dev.heroui.source": "var(--white)"
+        }
+      },
+      "field-foreground": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.2103,
+            0.0059,
+            285.9
+          ],
+          "hex": "#18181b"
+        },
+        "$extensions": {
+          "dev.heroui.source": "oklch(0.2103 0.0059 285.89)"
+        }
+      },
+      "field-placeholder": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.5517,
+            0.0138,
+            285.9
+          ],
+          "hex": "#71717a"
+        },
+        "$extensions": {
+          "dev.heroui.source": "var(--muted)"
+        }
+      },
+      "warning": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.7819,
+            0.1585,
+            72.3
+          ],
+          "hex": "#f5a524"
+        },
+        "$extensions": {
+          "dev.heroui.source": "oklch(0.7819 0.1585 72.33)"
+        }
+      },
+      "warning-foreground": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.2103,
+            0.0059,
+            285.9
+          ],
+          "hex": "#18181b"
+        },
+        "$extensions": {
+          "dev.heroui.source": "var(--eclipse)"
+        }
+      },
+      "danger": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.6532,
+            0.2328,
+            25.7
+          ],
+          "hex": "#ff383c"
+        },
+        "$extensions": {
+          "dev.heroui.source": "oklch(0.6532 0.2328 25.74)"
+        }
+      },
+      "danger-foreground": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.9911,
+            0,
+            0
+          ],
+          "hex": "#fcfcfc"
+        },
+        "$extensions": {
+          "dev.heroui.source": "var(--snow)"
+        }
+      },
+      "segment": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            1,
+            0,
+            0
+          ],
+          "hex": "#ffffff"
+        },
+        "$extensions": {
+          "dev.heroui.source": "var(--white)"
+        }
+      },
+      "segment-foreground": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.2103,
+            0.0059,
+            285.9
+          ],
+          "hex": "#18181b"
+        },
+        "$extensions": {
+          "dev.heroui.source": "var(--eclipse)"
+        }
+      },
+      "border": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.9,
+            0.004,
+            286.3
+          ],
+          "hex": "#dedee0"
+        },
+        "$extensions": {
+          "dev.heroui.source": "oklch(90% 0.004 286.32)"
+        }
+      },
+      "separator": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.92,
+            0.004,
+            286.3
+          ],
+          "hex": "#e4e4e7"
+        },
+        "$extensions": {
+          "dev.heroui.source": "oklch(92% 0.004 286.32)"
+        }
+      },
+      "focus": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.6204,
+            0.195,
+            253.8
+          ],
+          "hex": "#0485f7"
+        },
+        "$extensions": {
+          "dev.heroui.source": "var(--accent)"
+        }
+      },
+      "link": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.2103,
+            0.0059,
+            285.9
+          ],
+          "hex": "#18181b"
+        },
+        "$extensions": {
+          "dev.heroui.source": "var(--foreground)"
+        }
+      },
+      "backdrop": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0,
+            0,
+            0
+          ],
+          "hex": "#000000",
+          "alpha": 0.5
+        },
+        "$extensions": {
+          "dev.heroui.source": "rgba(0, 0, 0, 0.5)"
+        }
+      },
+      "surface-hover": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.9368,
+            0.0005,
+            285.9
+          ],
+          "hex": "#eaeaea"
+        },
+        "$extensions": {
+          "dev.heroui.source": "color-mix(in oklab, var(--surface) 92%, var(--surface-foreground) 8%)"
+        }
+      },
+      "background-secondary": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.9398,
+            0.0002,
+            285.9
+          ],
+          "hex": "#ebebeb"
+        },
+        "$extensions": {
+          "dev.heroui.source": "color-mix(in oklab, var(--background) 96%, var(--foreground) 4%)"
+        }
+      },
+      "background-tertiary": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.9094,
+            0.0005,
+            285.9
+          ],
+          "hex": "#e1e1e1"
+        },
+        "$extensions": {
+          "dev.heroui.source": "color-mix(in oklab, var(--background) 92%, var(--foreground) 8%)"
+        }
+      },
+      "background-inverse": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.2103,
+            0.0059,
+            285.9
+          ],
+          "hex": "#18181b"
+        },
+        "$extensions": {
+          "dev.heroui.source": "var(--foreground)"
+        }
+      },
+      "default-hover": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.9108,
+            0.0012,
+            286.3
+          ],
+          "hex": "#e1e1e2"
+        },
+        "$extensions": {
+          "dev.heroui.source": "color-mix(in oklab, var(--default) 96%, var(--default-foreground) 4%)"
+        }
+      },
+      "accent-hover": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.6575,
+            0.1755,
+            253.8
+          ],
+          "hex": "#3592f9"
+        },
+        "$extensions": {
+          "dev.heroui.source": "color-mix(in oklab, var(--accent) 90%, var(--accent-foreground) 10%)"
+        }
+      },
+      "success-hover": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.6806,
+            0.1737,
+            150.9
+          ],
+          "hex": "#21b55d"
+        },
+        "$extensions": {
+          "dev.heroui.source": "color-mix(in oklab, var(--success) 90%, var(--success-foreground) 10%)"
+        }
+      },
+      "warning-hover": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.7247,
+            0.1422,
+            72.2
+          ],
+          "hex": "#dc952a"
+        },
+        "$extensions": {
+          "dev.heroui.source": "color-mix(in oklab, var(--warning) 90%, var(--warning-foreground) 10%)"
+        }
+      },
+      "danger-hover": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.687,
+            0.2095,
+            25.7
+          ],
+          "hex": "#ff5551"
+        },
+        "$extensions": {
+          "dev.heroui.source": "color-mix(in oklab, var(--danger) 90%, var(--danger-foreground) 10%)"
+        }
+      },
+      "field-hover": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.9828,
+            0.0001,
+            285.9
+          ],
+          "hex": "#f9f9f9"
+        },
+        "$extensions": {
+          "dev.heroui.source": "color-mix( in oklab, var(--field-background, var(--default)) 90%, var(--field-foreground, var(--foreground)) 2% )"
+        }
+      },
+      "field-border-hover": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.2103,
+            0.0059,
+            285.9
+          ],
+          "hex": "#18181b",
+          "alpha": 0.102
+        },
+        "$extensions": {
+          "dev.heroui.source": "color-mix( in oklab, var(--field-border, var(--border)) 88%, var(--field-foreground, var(--foreground)) 10% )"
+        }
+      },
+      "field-border-focus": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.2103,
+            0.0059,
+            285.9
+          ],
+          "hex": "#18181b",
+          "alpha": 0.2292
+        },
+        "$extensions": {
+          "dev.heroui.source": "color-mix( in oklab, var(--field-border, var(--border)) 74%, var(--field-foreground, var(--foreground)) 22% )"
+        }
+      },
+      "default-soft": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.94,
+            0.001,
+            286.4
+          ],
+          "hex": "#ebebec",
+          "alpha": 0.5
+        },
+        "$extensions": {
+          "dev.heroui.source": "color-mix(in oklab, var(--default) 50%, transparent)"
+        }
+      },
+      "default-soft-foreground": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.2103,
+            0.0059,
+            285.9
+          ],
+          "hex": "#18181b"
+        },
+        "$extensions": {
+          "dev.heroui.source": "var(--default-foreground)"
+        }
+      },
+      "default-soft-hover": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.94,
+            0.001,
+            286.4
+          ],
+          "hex": "#ebebec",
+          "alpha": 0.6
+        },
+        "$extensions": {
+          "dev.heroui.source": "color-mix(in oklab, var(--default) 60%, transparent)"
+        }
+      },
+      "accent-soft": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.6204,
+            0.195,
+            253.8
+          ],
+          "hex": "#0485f7",
+          "alpha": 0.15
+        },
+        "$extensions": {
+          "dev.heroui.source": "color-mix(in oklab, var(--accent) 15%, transparent)"
+        }
+      },
+      "accent-soft-foreground": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.4974,
+            0.138,
+            254.2
+          ],
+          "hex": "#1e63ae"
+        },
+        "$extensions": {
+          "dev.heroui.source": "color-mix(in oklab, var(--accent) 70%, var(--foreground) 30%)"
+        }
+      },
+      "accent-soft-hover": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.6204,
+            0.195,
+            253.8
+          ],
+          "hex": "#0485f7",
+          "alpha": 0.2
+        },
+        "$extensions": {
+          "dev.heroui.source": "color-mix(in oklab, var(--accent) 20%, transparent)"
+        }
+      },
+      "danger-soft": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.6532,
+            0.2328,
+            25.7
+          ],
+          "hex": "#ff383c",
+          "alpha": 0.15
+        },
+        "$extensions": {
+          "dev.heroui.source": "color-mix(in oklab, var(--danger) 15%, transparent)"
+        }
+      },
+      "danger-soft-foreground": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.4921,
+            0.1478,
+            24.9
+          ],
+          "hex": "#a43433"
+        },
+        "$extensions": {
+          "dev.heroui.source": "color-mix(in oklab, var(--danger) 70%, var(--foreground) 40%)"
+        }
+      },
+      "danger-soft-hover": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.6532,
+            0.2328,
+            25.7
+          ],
+          "hex": "#ff383c",
+          "alpha": 0.2
+        },
+        "$extensions": {
+          "dev.heroui.source": "color-mix(in oklab, var(--danger) 20%, transparent)"
+        }
+      },
+      "warning-soft": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.7819,
+            0.1585,
+            72.3
+          ],
+          "hex": "#f5a524",
+          "alpha": 0.15
+        },
+        "$extensions": {
+          "dev.heroui.source": "color-mix(in oklab, var(--warning) 15%, transparent)"
+        }
+      },
+      "warning-soft-foreground": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.5152,
+            0.0823,
+            71.3
+          ],
+          "hex": "#855f2e"
+        },
+        "$extensions": {
+          "dev.heroui.source": "color-mix(in oklab, var(--warning) 80%, var(--foreground) 70%)"
+        }
+      },
+      "warning-soft-hover": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.7819,
+            0.1585,
+            72.3
+          ],
+          "hex": "#f5a524",
+          "alpha": 0.2
+        },
+        "$extensions": {
+          "dev.heroui.source": "color-mix(in oklab, var(--warning) 20%, transparent)"
+        }
+      },
+      "success-soft": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.7329,
+            0.1935,
+            150.8
+          ],
+          "hex": "#17c964",
+          "alpha": 0.15
+        },
+        "$extensions": {
+          "dev.heroui.source": "color-mix(in oklab, var(--success) 15%, transparent)"
+        }
+      },
+      "success-soft-foreground": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.5089,
+            0.1088,
+            151.8
+          ],
+          "hex": "#2b7745"
+        },
+        "$extensions": {
+          "dev.heroui.source": "color-mix(in oklab, var(--success) 80%, var(--foreground) 60%)"
+        }
+      },
+      "success-soft-hover": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.7329,
+            0.1935,
+            150.8
+          ],
+          "hex": "#17c964",
+          "alpha": 0.2
+        },
+        "$extensions": {
+          "dev.heroui.source": "color-mix(in oklab, var(--success) 20%, transparent)"
+        }
+      },
+      "separator-secondary": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.8815,
+            0.0009,
+            285.9
+          ],
+          "hex": "#d8d8d8"
+        },
+        "$extensions": {
+          "dev.heroui.source": "color-mix(in oklab, var(--surface) 85%, var(--surface-foreground) 15%)"
+        }
+      },
+      "separator-tertiary": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.85,
+            0.0011,
+            285.9
+          ],
+          "hex": "#cdcdce"
+        },
+        "$extensions": {
+          "dev.heroui.source": "color-mix(in oklab, var(--surface) 81%, var(--surface-foreground) 19%)"
+        }
+      },
+      "border-secondary": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.8263,
+            0.0013,
+            285.9
+          ],
+          "hex": "#c6c6c7"
+        },
+        "$extensions": {
+          "dev.heroui.source": "color-mix(in oklab, var(--surface) 78%, var(--surface-foreground) 22%)"
+        }
+      },
+      "border-tertiary": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.7315,
+            0.002,
+            285.9
+          ],
+          "hex": "#a8a8a9"
+        },
+        "$extensions": {
+          "dev.heroui.source": "color-mix(in oklab, var(--surface) 66%, var(--surface-foreground) 34%)"
+        }
+      }
+    },
+    "dark": {
+      "background": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.12,
+            0.005,
+            285.8
+          ],
+          "hex": "#060607"
+        },
+        "$extensions": {
+          "dev.heroui.source": "oklch(12% 0.005 285.823)"
+        }
+      },
+      "foreground": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.9911,
+            0,
+            0
+          ],
+          "hex": "#fcfcfc"
+        },
+        "$extensions": {
+          "dev.heroui.source": "var(--snow)"
+        }
+      },
+      "surface": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.2103,
+            0.0059,
+            285.9
+          ],
+          "hex": "#18181b"
+        },
+        "$extensions": {
+          "dev.heroui.source": "oklch(0.2103 0.0059 285.89)"
+        }
+      },
+      "surface-foreground": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.9911,
+            0,
+            0
+          ],
+          "hex": "#fcfcfc"
+        },
+        "$extensions": {
+          "dev.heroui.source": "var(--foreground)"
+        }
+      },
+      "surface-secondary": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.257,
+            0.0037,
+            286.1
+          ],
+          "hex": "#232325"
+        },
+        "$extensions": {
+          "dev.heroui.source": "oklch(0.257 0.0037 286.14)"
+        }
+      },
+      "surface-secondary-foreground": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.9911,
+            0,
+            0
+          ],
+          "hex": "#fcfcfc"
+        },
+        "$extensions": {
+          "dev.heroui.source": "var(--foreground)"
+        }
+      },
+      "surface-tertiary": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.2721,
+            0.0024,
+            247.9
+          ],
+          "hex": "#262728"
+        },
+        "$extensions": {
+          "dev.heroui.source": "oklch(0.2721 0.0024 247.91)"
+        }
+      },
+      "surface-tertiary-foreground": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.9911,
+            0,
+            0
+          ],
+          "hex": "#fcfcfc"
+        },
+        "$extensions": {
+          "dev.heroui.source": "var(--foreground)"
+        }
+      },
+      "overlay": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.2103,
+            0.0059,
+            285.9
+          ],
+          "hex": "#18181b"
+        },
+        "$extensions": {
+          "dev.heroui.source": "oklch(0.2103 0.0059 285.89)"
+        }
+      },
+      "overlay-foreground": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.9911,
+            0,
+            0
+          ],
+          "hex": "#fcfcfc"
+        },
+        "$extensions": {
+          "dev.heroui.source": "var(--foreground)"
+        }
+      },
+      "muted": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.705,
+            0.015,
+            286.1
+          ],
+          "hex": "#9f9fa9"
+        },
+        "$extensions": {
+          "dev.heroui.source": "oklch(70.5% 0.015 286.067)"
+        }
+      },
+      "scrollbar": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.9911,
+            0,
+            0
+          ],
+          "hex": "#fcfcfc",
+          "alpha": 0.15
+        },
+        "$extensions": {
+          "dev.heroui.source": "var(--scrollbar-thumb)"
+        }
+      },
+      "scrollbar-thumb": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.9911,
+            0,
+            0
+          ],
+          "hex": "#fcfcfc",
+          "alpha": 0.15
+        },
+        "$extensions": {
+          "dev.heroui.source": "color-mix(in oklch, var(--foreground) 15%, transparent)"
+        }
+      },
+      "scrollbar-track": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0,
+            0,
+            0
+          ],
+          "hex": "#000000",
+          "alpha": 0
+        },
+        "$extensions": {
+          "dev.heroui.source": "transparent"
+        }
+      },
+      "default": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.274,
+            0.006,
+            286
+          ],
+          "hex": "#27272a"
+        },
+        "$extensions": {
+          "dev.heroui.source": "oklch(27.4% 0.006 286.033)"
+        }
+      },
+      "default-foreground": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.9911,
+            0,
+            0
+          ],
+          "hex": "#fcfcfc"
+        },
+        "$extensions": {
+          "dev.heroui.source": "var(--snow)"
+        }
+      },
+      "field-background": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.2103,
+            0.0059,
+            285.9
+          ],
+          "hex": "#18181b"
+        },
+        "$extensions": {
+          "dev.heroui.source": "oklch(0.2103 0.0059 285.89)"
+        }
+      },
+      "field-foreground": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.9911,
+            0,
+            0
+          ],
+          "hex": "#fcfcfc"
+        },
+        "$extensions": {
+          "dev.heroui.source": "var(--foreground)"
+        }
+      },
+      "field-placeholder": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.705,
+            0.015,
+            286.1
+          ],
+          "hex": "#9f9fa9"
+        },
+        "$extensions": {
+          "dev.heroui.source": "var(--muted)"
+        }
+      },
+      "warning": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.8203,
+            0.1388,
+            76.3
+          ],
+          "hex": "#f7b750"
+        },
+        "$extensions": {
+          "dev.heroui.source": "oklch(0.8203 0.1388 76.34)"
+        }
+      },
+      "warning-foreground": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.2103,
+            0.0059,
+            285.9
+          ],
+          "hex": "#18181b"
+        },
+        "$extensions": {
+          "dev.heroui.source": "var(--eclipse)"
+        }
+      },
+      "danger": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.594,
+            0.1967,
+            24.6
+          ],
+          "hex": "#db3b3e"
+        },
+        "$extensions": {
+          "dev.heroui.source": "oklch(0.594 0.1967 24.63)"
+        }
+      },
+      "danger-foreground": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.9911,
+            0,
+            0
+          ],
+          "hex": "#fcfcfc"
+        },
+        "$extensions": {
+          "dev.heroui.source": "var(--snow)"
+        }
+      },
+      "segment": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.3964,
+            0.01,
+            285.9
+          ],
+          "hex": "#46464c"
+        },
+        "$extensions": {
+          "dev.heroui.source": "oklch(0.3964 0.01 285.93)"
+        }
+      },
+      "segment-foreground": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.9911,
+            0,
+            0
+          ],
+          "hex": "#fcfcfc"
+        },
+        "$extensions": {
+          "dev.heroui.source": "var(--foreground)"
+        }
+      },
+      "border": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.28,
+            0.006,
+            286
+          ],
+          "hex": "#28282c"
+        },
+        "$extensions": {
+          "dev.heroui.source": "oklch(28% 0.006 286.033)"
+        }
+      },
+      "separator": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.25,
+            0.006,
+            286
+          ],
+          "hex": "#212124"
+        },
+        "$extensions": {
+          "dev.heroui.source": "oklch(25% 0.006 286.033)"
+        }
+      },
+      "focus": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.6204,
+            0.195,
+            253.8
+          ],
+          "hex": "#0485f7"
+        },
+        "$extensions": {
+          "dev.heroui.source": "var(--accent)"
+        }
+      },
+      "link": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.9911,
+            0,
+            0
+          ],
+          "hex": "#fcfcfc"
+        },
+        "$extensions": {
+          "dev.heroui.source": "var(--foreground)"
+        }
+      },
+      "backdrop": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0,
+            0,
+            0
+          ],
+          "hex": "#000000",
+          "alpha": 0.6
+        },
+        "$extensions": {
+          "dev.heroui.source": "rgba(0, 0, 0, 0.6)"
+        }
+      },
+      "surface-hover": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.2728,
+            0.0054,
+            285.9
+          ],
+          "hex": "#27272a"
+        },
+        "$extensions": {
+          "dev.heroui.source": "color-mix(in oklab, var(--surface) 92%, var(--surface-foreground) 8%)"
+        }
+      },
+      "background-secondary": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.1548,
+            0.0048,
+            285.8
+          ],
+          "hex": "#0c0c0e"
+        },
+        "$extensions": {
+          "dev.heroui.source": "color-mix(in oklab, var(--background) 96%, var(--foreground) 4%)"
+        }
+      },
+      "background-tertiary": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.1897,
+            0.0046,
+            285.8
+          ],
+          "hex": "#131316"
+        },
+        "$extensions": {
+          "dev.heroui.source": "color-mix(in oklab, var(--background) 92%, var(--foreground) 8%)"
+        }
+      },
+      "background-inverse": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.9911,
+            0,
+            0
+          ],
+          "hex": "#fcfcfc"
+        },
+        "$extensions": {
+          "dev.heroui.source": "var(--foreground)"
+        }
+      },
+      "default-hover": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.3027,
+            0.0058,
+            286
+          ],
+          "hex": "#2e2e31"
+        },
+        "$extensions": {
+          "dev.heroui.source": "color-mix(in oklab, var(--default) 96%, var(--default-foreground) 4%)"
+        }
+      },
+      "accent-hover": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.6575,
+            0.1755,
+            253.8
+          ],
+          "hex": "#3592f9"
+        },
+        "$extensions": {
+          "dev.heroui.source": "color-mix(in oklab, var(--accent) 90%, var(--accent-foreground) 10%)"
+        }
+      },
+      "success-hover": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.6806,
+            0.1737,
+            150.9
+          ],
+          "hex": "#21b55d"
+        },
+        "$extensions": {
+          "dev.heroui.source": "color-mix(in oklab, var(--success) 90%, var(--success-foreground) 10%)"
+        }
+      },
+      "warning-hover": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.7593,
+            0.1244,
+            76.2
+          ],
+          "hex": "#dea54c"
+        },
+        "$extensions": {
+          "dev.heroui.source": "color-mix(in oklab, var(--warning) 90%, var(--warning-foreground) 10%)"
+        }
+      },
+      "danger-hover": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.6337,
+            0.177,
+            24.6
+          ],
+          "hex": "#e15451"
+        },
+        "$extensions": {
+          "dev.heroui.source": "color-mix(in oklab, var(--danger) 90%, var(--danger-foreground) 10%)"
+        }
+      },
+      "field-hover": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.2273,
+            0.0058,
+            285.9
+          ],
+          "hex": "#1c1c1f"
+        },
+        "$extensions": {
+          "dev.heroui.source": "color-mix( in oklab, var(--field-background, var(--default)) 90%, var(--field-foreground, var(--foreground)) 2% )"
+        }
+      },
+      "field-border-hover": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.9911,
+            0,
+            0
+          ],
+          "hex": "#fcfcfc",
+          "alpha": 0.102
+        },
+        "$extensions": {
+          "dev.heroui.source": "color-mix( in oklab, var(--field-border, var(--border)) 88%, var(--field-foreground, var(--foreground)) 10% )"
+        }
+      },
+      "field-border-focus": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.9911,
+            0,
+            0
+          ],
+          "hex": "#fcfcfc",
+          "alpha": 0.2292
+        },
+        "$extensions": {
+          "dev.heroui.source": "color-mix( in oklab, var(--field-border, var(--border)) 74%, var(--field-foreground, var(--foreground)) 22% )"
+        }
+      },
+      "default-soft": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.274,
+            0.006,
+            286
+          ],
+          "hex": "#27272a",
+          "alpha": 0.5
+        },
+        "$extensions": {
+          "dev.heroui.source": "color-mix(in oklab, var(--default) 50%, transparent)"
+        }
+      },
+      "default-soft-foreground": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.9911,
+            0,
+            0
+          ],
+          "hex": "#fcfcfc"
+        },
+        "$extensions": {
+          "dev.heroui.source": "var(--default-foreground)"
+        }
+      },
+      "default-soft-hover": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.274,
+            0.006,
+            286
+          ],
+          "hex": "#27272a",
+          "alpha": 0.6
+        },
+        "$extensions": {
+          "dev.heroui.source": "color-mix(in oklab, var(--default) 60%, transparent)"
+        }
+      },
+      "accent-soft": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.6204,
+            0.195,
+            253.8
+          ],
+          "hex": "#0485f7",
+          "alpha": 0.12
+        },
+        "$extensions": {
+          "dev.heroui.source": "color-mix(in oklab, var(--accent) 12%, transparent)"
+        }
+      },
+      "accent-soft-foreground": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.7215,
+            0.1418,
+            253.8
+          ],
+          "hex": "#61a8fb"
+        },
+        "$extensions": {
+          "dev.heroui.source": "color-mix(in oklab, var(--accent) 80%, var(--foreground) 30%)"
+        }
+      },
+      "accent-soft-hover": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.6204,
+            0.195,
+            253.8
+          ],
+          "hex": "#0485f7",
+          "alpha": 0.16
+        },
+        "$extensions": {
+          "dev.heroui.source": "color-mix(in oklab, var(--accent) 16%, transparent)"
+        }
+      },
+      "danger-soft": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.594,
+            0.1967,
+            24.6
+          ],
+          "hex": "#db3b3e",
+          "alpha": 0.15
+        },
+        "$extensions": {
+          "dev.heroui.source": "color-mix(in oklab, var(--danger) 15%, transparent)"
+        }
+      },
+      "danger-soft-foreground": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.7023,
+            0.1431,
+            24.6
+          ],
+          "hex": "#eb7872"
+        },
+        "$extensions": {
+          "dev.heroui.source": "color-mix(in oklab, var(--danger) 80%, var(--foreground) 30%)"
+        }
+      },
+      "danger-soft-hover": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.594,
+            0.1967,
+            24.6
+          ],
+          "hex": "#db3b3e",
+          "alpha": 0.2
+        },
+        "$extensions": {
+          "dev.heroui.source": "color-mix(in oklab, var(--danger) 20%, transparent)"
+        }
+      },
+      "warning-soft": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.8203,
+            0.1388,
+            76.3
+          ],
+          "hex": "#f7b750",
+          "alpha": 0.12
+        },
+        "$extensions": {
+          "dev.heroui.source": "color-mix(in oklab, var(--warning) 12%, transparent)"
+        }
+      },
+      "warning-soft-foreground": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.8669,
+            0.1009,
+            76.3
+          ],
+          "hex": "#f9cb86"
+        },
+        "$extensions": {
+          "dev.heroui.source": "color-mix(in oklab, var(--warning) 80%, var(--foreground) 30%)"
+        }
+      },
+      "warning-soft-hover": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.8203,
+            0.1388,
+            76.3
+          ],
+          "hex": "#f7b750",
+          "alpha": 0.16
+        },
+        "$extensions": {
+          "dev.heroui.source": "color-mix(in oklab, var(--warning) 16%, transparent)"
+        }
+      },
+      "success-soft": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.7329,
+            0.1935,
+            150.8
+          ],
+          "hex": "#17c964",
+          "alpha": 0.12
+        },
+        "$extensions": {
+          "dev.heroui.source": "color-mix(in oklab, var(--success) 12%, transparent)"
+        }
+      },
+      "success-soft-foreground": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.8033,
+            0.1407,
+            150.8
+          ],
+          "hex": "#74d88f"
+        },
+        "$extensions": {
+          "dev.heroui.source": "color-mix(in oklab, var(--success) 80%, var(--foreground) 30%)"
+        }
+      },
+      "success-soft-hover": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.7329,
+            0.1935,
+            150.8
+          ],
+          "hex": "#17c964",
+          "alpha": 0.16
+        },
+        "$extensions": {
+          "dev.heroui.source": "color-mix(in oklab, var(--success) 16%, transparent)"
+        }
+      },
+      "separator-secondary": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.3274,
+            0.005,
+            285.9
+          ],
+          "hex": "#343437"
+        },
+        "$extensions": {
+          "dev.heroui.source": "color-mix(in oklab, var(--surface) 85%, var(--surface-foreground) 15%)"
+        }
+      },
+      "separator-tertiary": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.3587,
+            0.0048,
+            285.9
+          ],
+          "hex": "#3c3c3f"
+        },
+        "$extensions": {
+          "dev.heroui.source": "color-mix(in oklab, var(--surface) 81%, var(--surface-foreground) 19%)"
+        }
+      },
+      "border-secondary": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.3821,
+            0.0046,
+            285.9
+          ],
+          "hex": "#434345"
+        },
+        "$extensions": {
+          "dev.heroui.source": "color-mix(in oklab, var(--surface) 78%, var(--surface-foreground) 22%)"
+        }
+      },
+      "border-tertiary": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.4758,
+            0.0039,
+            285.9
+          ],
+          "hex": "#5c5c5f"
+        },
+        "$extensions": {
+          "dev.heroui.source": "color-mix(in oklab, var(--surface) 66%, var(--surface-foreground) 34%)"
+        }
+      }
+    },
+    "vibrant": {
+      "accent-soft-foreground": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.4974,
+            0.138,
+            254.2
+          ],
+          "hex": "#1e63ae"
+        },
+        "$extensions": {
+          "dev.heroui.source": "color-mix(in oklab, var(--accent) 92%, var(--foreground) 8%)"
+        }
+      },
+      "danger-soft-foreground": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.4921,
+            0.1478,
+            24.9
+          ],
+          "hex": "#a43433"
+        },
+        "$extensions": {
+          "dev.heroui.source": "color-mix(in oklab, var(--danger) 92%, var(--foreground) 8%)"
+        }
+      },
+      "warning-soft-foreground": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.5152,
+            0.0823,
+            71.3
+          ],
+          "hex": "#855f2e"
+        },
+        "$extensions": {
+          "dev.heroui.source": "color-mix(in oklab, var(--warning) 92%, var(--foreground) 8%)"
+        }
+      },
+      "success-soft-foreground": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0.5089,
+            0.1088,
+            151.8
+          ],
+          "hex": "#2b7745"
+        },
+        "$extensions": {
+          "dev.heroui.source": "color-mix(in oklab, var(--success) 92%, var(--foreground) 8%)"
+        }
+      }
+    }
+  }
+}
