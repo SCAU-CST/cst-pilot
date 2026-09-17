@@ -18,7 +18,7 @@
 - 工具：[FeralUI Gradient Builder](https://feralui.dev/gradients)。作者 Sarthak Navalekar。
 - 实现参考：站点公开分发的 [`JapaneseGradients-BRFKYYZf.js`](https://feralui.dev/assets/JapaneseGradients-BRFKYYZf.js)，2026-09-16 查阅。
 - 对应类型：`PRISM2`。该类型原实现是 Canvas 2D，不是 GLSL；板条采样与绘制函数在此构建中分别命名为 `T8`、`H8`，SVG 导出为 `Md`。
-- 用户分享链接解码为 `Mint tonic` 绿色配色；这里只采用其 `slant / expand` 运动配置，配色保留用户此前提供的 Blue hour。
+- [用户确认的 Blue hour 预设](https://feralui.dev/gradients?g=2.JY9Lb8IwEIT_Chque0gCAbo3QoNaqVUrKk4VB5NsHmqwI9uhD5T_XjncZmc-aWZvqME3OG96B_7EPEmSVZqDMF9ky3y7CWq93qSPk5ftdst9HFS-zB_2W5wI_rcXMN4Pzx-vCQiVVZdgfLelgPAFBggWjOzlmM-e3o4HEAKRdYPMGjNYEM7KurCkMIP24Dgm1KoHRwTRV-nMVGLVpQ8Vg2uNnoY3agpcp7QHoWytFH4KI4Jr_wQcRxGhkbZuPHgVESpTDA6cRoTeuPaOh-vciS7Bq5RQqUK8Ay9SwsXcEchPr3QZvpGrWCfgSnVOxpFQW9Vq8GIkePDnafwH)：`PRISM2 / slant / expand`，grain=3。链接未保存播放速度，稿件默认采用 30。
 
 ## 参数与差异
 
