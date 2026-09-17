@@ -19,6 +19,15 @@
    进程会让下次打开文件时读取旧的内存状态，改了 .pen 文件却看不到效果。
    确认干净用 `Get-Process Pen` 看进程数归零。
 
+8. 通过 MCP/CLI 改完画布后，可用 CLI 直接保存：
+   `"save()`nexit()" | pen interactive --app desktop`。
+   连上正在运行的应用执行 save()，无需在窗口里按 Ctrl+S。
+9. `TakeScreenshot`/`Export` 导出的图片里 icon 节点渲染为问号，是导出缺陷，画布实际正常。
+    若画布上也显示问号，是运行实例的图标渲染缓存未刷新，重启应用重新打开文件即可。
+    MCP 新建/修改 icon 节点后建议重启验证。
+10. MCP `Update` 改 icon 节点时必须带上 `icon`、`library`、`width`、`height` 全部字段，
+    只传 `fill` 等部分字段会把节点重置成无名空壳（0×0，Material Symbols Rounded），保存后丢失。
+
 ## 来源
 
 1. `pen --help`：CLI 顶层命令、参数与示例。
