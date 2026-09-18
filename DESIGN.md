@@ -76,7 +76,6 @@ omitted:
 | [cst-pilot-web.pen](web/design/cst-pilot-web.pen) | 浅深两版首页及浅色聊天页的用色、背景与排版 |
 | [Web 端设计决策](doc/design/web/design-decisions.md) | 组件库、令牌组织与浏览器兼容方向 |
 
-色卡中的展示字体和静态背景说明不作为网页规范。首页的例外用色与动态背景以网页画布为依据；令牌、派生图和后续画布修改需与本文同步。
 
 格式依据 [DESIGN.md Format](https://github.com/google-labs-code/design.md)（alpha）。本文件放在仓库根目录，供 Pen 从工作目录读取。
 
