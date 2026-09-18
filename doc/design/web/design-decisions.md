@@ -14,7 +14,7 @@
 
 ## 设计标准
 
-规定「怎么写」，不含具体值。具体值在各设计章节。
+规定「怎么写」，不含具体值。已确定的取值集中在根目录 `DESIGN.md`。
 
 ### 令牌格式
 
@@ -43,13 +43,13 @@
 
 规定字号档位怎么命名，名字说用途不说数值，改字号不动名字。
 
-角色取 Material 3 的五个，各分 large / medium / small：display、headline、title、body、label。具体数值在 `## 版式` 定。
+角色取 Material 3 的五个，各分 large / medium / small：display、headline、title、body、label。完整角色映射尚未确定；首页实际字体与字号见 [DESIGN.md · Typography](../../../DESIGN.md#typography)。
 
 ### 动效标准
 
 规定全站动效的时长与缓动，让节奏统一，降级时改一处即可。
 
-两类令牌：`duration`（时长）与 `cubicBezier`（缓动曲线）。具体数值在 `## 动效` 定。
+两类令牌：`duration`（时长）与 `cubicBezier`（缓动曲线），全站数值尚未确定。首页背景动画参数见 [DESIGN.md · 首页动态背景](../../../DESIGN.md#首页动态背景)，不作为全站交互动效令牌。
 
 ### 兼容版降级（目标 Chromium 86）
 
@@ -65,83 +65,20 @@
 
 ## 配色系统
 
-由三个外部来源拼成，各管一层，互不替代。不是三选一，是同一件事的不同层。
+采用 HeroUI v3 的语义角色、[Radix Colors](https://www.radix-ui.com/colors)（MIT）的 12 步用途组织方式和自有 OKLCH 色值。浅深两套独立生成；首页 Blue hour 背景与例外用色独立于通用色阶。
 
-| 层 | 管什么 | 来源 |
-|---|---|---|
-| 角色 | 界面哪块用什么 | HeroUI v3（`@heroui/styles` 3.2.5） |
-| 组织 | 一个色相多少档、每档干什么 | [Radix Colors](https://www.radix-ui.com/colors)（MIT） |
-| 色值 | 具体是什么颜色 | 自己生成 |
-| 格式 | 怎么存进文件 | DTCG 2025.10，见[令牌格式](#令牌格式) |
+规范集中在 [DESIGN.md · Colors](../../../DESIGN.md#colors)：用途划分、中性与彩色色阶、首页实际用色、动态背景参数及对比度边界。本文件不另存一套色值。
 
-取色顺序：先按界面位置找到 HeroUI 的角色名，再看它属于第几步用途，最后取该步的色值。
-
-HeroUI 的命名规则：无后缀是背景色，`-foreground` 是压在上面的文字色。
-
-### 12 步用途
-
-色阶定为 12 步。每步绑定一种界面用途，取色依据是用途，不是明暗编号。
-
-| 步 | 用途 | 界面落点 |
-|---|---|---|
-| 1 | 页面背景 | 主界面底色、画布区域 |
-| 2 | 次级背景 | 卡片、隔行、侧栏 |
-| 3 | 交互元素底色 | 按钮与输入框默认态 |
-| 4 | 悬停底色 | 指针移到元素上 |
-| 5 | 按下与选中底色 | 点击态、选中项 |
-| 6 | 弱边框 | 静态分隔线 |
-| 7 | 元素边框 | 输入框、卡片边框 |
-| 8 | 强边框与焦点环 | 悬停边框、键盘焦点 |
-| 9 | 实心色块 | 主按钮、徽标 |
-| 10 | 实心色块悬停 | 主按钮悬停态 |
-| 11 | 低对比文字 | 次要说明、占位符 |
-| 12 | 高对比文字 | 正文、标题 |
-
-第 9 步色度最高。浅色底上的第 9 步配白字，深色底上配深色字，都要过 WCAG AA 4.5:1。
-
-明暗两套分开调，不用反转或混色派生。
-
-划分画布见 [web/design/cst-pilot-colors.pen](../../web/design/cst-pilot-colors.pen)，导出的图见 [asset/cst-pilot-color-steps.png](asset/cst-pilot-color-steps.png)。
-
-### 与令牌分层的对应
-
-三层令牌在本配色系统里分别装什么：
-
-| 令牌层 | 内容 | 例子 |
-|---|---|---|
-| reference | 色阶的一档 | `--accent-9` |
-| system | HeroUI 的语义角色 | `--accent` |
-| component | 组件内部变量 | `--button-bg` |
-
-### 采用的方案
-
-中性色偏蓝，色相 230°，色度 0.012。彩色四系：主色蓝 254°、成功绿 151°、警告琥珀 72°、危险红 26°。峰值色度系数 0.94。
-
-色阶由 oklch 曲线算出，不是手挑的固定值。生成器见 [asset/make-color-scale.mjs](asset/make-color-scale.mjs)。
-
-| 项 | 规则 |
+| 资产 | 用途 |
 |---|---|
-| 明度 | 12 步各有基准明度，浅深两套独立 |
-| 色度 | 每步一个相对系数，第 9 步拉满 |
-| 黄色系 | 第 9/10 步按色相提亮，越接近 100° 抬得越多 |
-| 超出色域 | 保明度与色相，压低色度 |
-
-令牌见 [asset/cst-pilot-colors.tokens.json](asset/cst-pilot-colors.tokens.json)，色卡图见 [asset/cst-pilot-color-scale.png](asset/cst-pilot-color-scale.png)。
-
-备选方案（中性纯灰、中性偏青）已归档到 [web/design/achieved/](../../web/design/achieved/)。
-
-## 渐变与底图
-
-## Shader
+| [色阶画布](../../../web/design/cst-pilot-colors.pen) | 用途划分与完整色阶展示 |
+| [首页画布](../../../web/design/cst-pilot-web.pen) | 浅深两版的实际界面配色与排版 |
+| [颜色令牌](asset/cst-pilot-colors.tokens.json) | 完整 OKLCH 与 sRGB 色值 |
+| [色阶生成器](asset/make-color-scale.mjs) | 明度曲线、色度系数、黄色提亮与色域处理 |
+| [背景说明](../../../web/design/asset/blue-hour.md) | Shader 参数、来源与实现差异 |
 
 ## 版式
 
-## 布局
+首页中文使用思源黑体，产品名、模型名和页脚使用 Inter。色卡说明文字使用的 Noto Sans SC 不纳入产品字体体系。
 
-## 圆角与阴影
-
-## 动效
-
-## 诊断卡片
-
-## 会话与设置
+实际字号、字重和未定事项见 [DESIGN.md · Typography](../../../DESIGN.md#typography)。完整全站字号阶梯、行高、字距及字体加载策略尚未确定。

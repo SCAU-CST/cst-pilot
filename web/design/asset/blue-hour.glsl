@@ -33,6 +33,18 @@ uniform float u_count;
  */
 uniform float u_height;
 /**
+ * @label Horizontal focus
+ * @default 50
+ * @range 0, 100
+ */
+uniform float u_focus;
+/**
+ * @label Vertical position
+ * @default 50
+ * @range 0, 100
+ */
+uniform float u_position;
+/**
  * @label Blend
  * @default 65
  * @range 0, 100
@@ -51,7 +63,7 @@ uniform float u_facets;
  */
 uniform float u_grain;
 /**
- * @label Blue hour palette
+ * @label Theme palette
  */
 uniform sampler2D u_palette;
 
@@ -77,9 +89,10 @@ void main() {
     float outer = min(1.0, (lane + 1.0 + travel) / count);
     float center = 0.5 + (uv.x < 0.5 ? -1.0 : 1.0) * (inner + outer) * 0.25;
 
-    // Slant profile, focus/position=50, size=100, direction=0, expand motion.
-    float envelope = smoothstep(0.0, 1.0, center);
-    float ridge = 0.28 + envelope * (u_height * 0.006) + 0.015 * sin(time * 0.32);
+    // Slant profile, size=100, direction=0, expand motion.
+    float envelope = smoothstep(0.0, 1.0, center + 0.5 - u_focus / 100.0);
+    float ridge = 0.28 + envelope * (u_height * 0.006)
+                + (u_position - 50.0) * 0.009 + 0.015 * sin(time * 0.32);
     float facet = (0.025 * sin(lane * 1.8) + 0.012 * sin(lane * 0.73 + time * 0.24)) * (u_facets / 35.0);
     float sampleY = clamp(uv.y, 0.0, 1.0) * 95.0;
     float lower = floor(sampleY);
