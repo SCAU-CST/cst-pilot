@@ -6,112 +6,96 @@
 
 ## 结论
 
-1. 独立扩展，目录 agent/home/extensions/oauth/，与 diagnostics 平级，不改 pi 内核。
-2. 扩展负责：设备标识、设备流登录、令牌查询与刷新、任务选择、网关 provider 注入、状态命令。
-3. 二维码引入单文件 MIT 库（vendored），登记 THIRD-PARTY-NOTICES；不引其他依赖。
-4. 启动前刷新放在 pi.cmd 调用的 node 脚本；会话内交互由扩展负责；两者共用同一模块。
+1. 用 pi 原生的自定义 provider OAuth 机制实现：扩展通过 `pi.registerProvider("cstoa", { oauth })` 注册。
+2. 登录界面、凭据存储、自动刷新都由 pi 负责；扩展只实现 `login` 与 `refreshToken` 两个回调。
+3. 模型流量走 OA 代理（方案 S）：provider 的 `baseUrl` 指向 OA 的 OpenAI 兼容端点，`getApiKey` 返回 OA 访问令牌。
+4. 登录界面用 pi 原生设备码界面（可点击 URL + 6 位数字码）。二维码暂不做，见上游讨论。
+5. 扩展额外维护两样东西：设备标识与 OA 访问令牌缓存（供 `/api/agent/*` 调用）。
 
-## 目录结构
+## 与 pi 原生能力的分工
+
+| 事项 | 负责方 |
+|---|---|
+| 登录界面（URL、6 位数字码） | pi，`onDeviceCode` 回调 |
+| 凭据存储与自动刷新 | pi，`auth.json`（0600）与 `refreshToken` 回调 |
+| 设备码轮询 | 扩展。pi 的 `@earendil-works/pi-ai/oauth` 只导出类型，未导出轮询工具 |
+| 任务选择、日志等 OA API 调用 | 扩展 |
+| 二维码 | 暂不做。上游暂无提案，按贡献规范走 issue 流程 |
+
+## 扩展结构
 
 ```
 agent/home/extensions/oauth/
-|-- index.ts          扩展入口：命令注册与事件订阅
-|-- device.ts         设备标识读写（agent/home/device.json）
-|-- flow.ts           设备授权流：申请、轮询、超时
-|-- tokens.ts         令牌存储与刷新
-|-- provider.ts       网关 provider 注入
-|-- tasks.ts          任务列表与选择
-|-- qr.ts             二维码渲染（TUI）
-|-- vendor/qrcode.js  vendored 单文件库（MIT）
+|-- index.ts       入口：registerProvider 与命令注册
+|-- oa.ts          OA 设备流与令牌交换（login/refresh）
+|-- device.ts      设备标识（agent/home/device.json）
+|-- tasks.ts       任务列表与选择
 `-- package.json
 ```
 
-## 登录流程（/cst-login）
+## 登录与刷新
 
-1. 读取或生成 device.json。
-2. POST /api/oauth/device_authorization，取 user_code 与 verification_uri。
-3. TUI 渲染二维码与 6 位数字码；宽度不足时只显示链接。
-4. 按 interval 轮询；超过 5 分钟提示重新开始。
-5. 成功后写 access_token；记住模式另写 refresh token。
-6. 失败按 RFC 8628 错误码给出中文提示。
+1. `/login` 选择 "CSTOA OA"，pi 调用扩展的 `login(callbacks)`。
+2. `login`：POST `/api/oauth/device_authorization`，然后用 `callbacks.onDeviceCode({ userCode, verificationUri, intervalSeconds, expiresInSeconds })` 交给 pi 展示。
+3. 按 interval 轮询 `/api/oauth/token`，成功后返回 `{ access, refresh, expires }`。
+4. pi 把凭据写入 `auth.json`；临近过期时自动调用 `refreshToken(credentials, signal)`。
+5. 刷新走 OA 的 refresh grant，轮换令牌；失败则提示重新 `/login`。
 
-## 令牌与刷新
+约定：
 
-| 项 | 规则 |
+1. 默认每场扫码时不返回 refresh，凭据过期即要求重新登录。
+2. 开启「记住 7 天」时返回 refresh，由 pi 持久化与轮换。
+
+## 模型调用（方案 S）
+
+| provider 字段 | 值 |
 |---|---|
-| 检查时机 | 每次请求前检查 exp |
-| 提前刷新 | 距过期小于 5 分钟触发 |
-| 静默刷新 | 有 refresh token 时自动完成 |
-| 无 refresh | 提示执行 /cst-login |
-| 401 或 403 | 清理本地令牌，提示重新登录 |
+| baseUrl | https://cstoa.top/api/agent/llm/v1 |
+| api | OpenAI 兼容 |
+| models | 网关可用模型清单，与 OA 约定 |
+| oauth.getApiKey | `(credentials) => credentials.access` |
 
-## 任务与会话（M1）
+1. OA 代理端点校验 `llm:chat` 作用域与额度，转发到 New API 并记录审计。
+2. 流式响应按 OpenAI 兼容格式透传。
 
-1. /cst-task 列出本人任务。
-2. 选择后 POST /api/agent/repair-sessions 创建会话。
-3. 会话号与任务号写入会话文件，供审计与日志关联。
-4. 会话结束调用关闭流程；M2 起在关闭时提交日志草稿。
+## OA API 调用（任务与日志）
 
-## 网关 provider 注入
-
-1. 登录或刷新后 POST /api/agent/gateway-key 领取短期令牌。
-2. 写入 agent/home/models.json 的 provider（cstoa-gateway）。
-3. key 过期前自动换新并更新配置。
-4. 不覆盖用户自建 provider。
-
-待核实：pi 是否支持扩展运行时热更新 provider。不支持时降级为「启动前刷新，会话内提示重启生效」。
-
-## 凭据存储
-
-| 文件 | 内容 | 说明 |
-|---|---|---|
-| agent/home/device.json | device_id、设备名、首次运行时间 | 不含秘密 |
-| agent/home/auth.json | pi 凭据（access token） | 沿用 pi 机制 |
-| agent/home/cst-refresh.json | refresh token（记住模式） | 明文，默认不生成 |
-
-1. 日志不打印完整令牌，最多前 6 位。
-2. /cst-logout 清理本地文件并调用 revoke。
+1. 登录与刷新回调里同步写 `agent/home/cst-oa.json`（0600），缓存当前 OA 访问令牌与过期时间。
+2. 调 `/api/agent/*` 前检查有效期；收到 401 或 403 时提示重新登录。
+3. 任务绑定（M1）：`/cst-task` 列出本人任务，选择后创建修机会话。
 
 ## 错误处理
 
 | 场景 | 行为 |
 |---|---|
-| 授权被拒 | 提示已拒绝，重新执行 /cst-login |
+| 授权被拒 | 提示已拒绝，重新执行 /login |
 | 扫码超时 | 提示重新开始 |
 | 网络失败 | 提示检查网络，无离线模式 |
-| 设备被吊销 | 清理凭据，提示重新授权或联系管理员 |
-| TOTP 校验失败 | 授权页内提示，agent 保持轮询 |
+| 设备被吊销 | 刷新或请求被拒后提示重新授权或联系管理员 |
 | 额度不足 | 提示额度不足，不自动重试 |
-
-## 二维码渲染
-
-1. 首选 vendored 单文件库，输出块字符画。
-2. 终端宽度不足 60 列时退回「链接 + 6 位数字码」。
-3. Web 端（后续）渲染 SVG 或 canvas。
 
 ## 打包与合规
 
 1. pack.mjs 整目录复制 extensions/，无需白名单改动。
-2. 新增第三方库登记 THIRD-PARTY-NOTICES。
+2. M1 不引入第三方库（二维码暂不做）。
 3. pi.cmd 注释更新：说明 OAuth 与离线开关的关系。
 
 ## 测试用例
 
 | 用例 | 说明 |
 |---|---|
-| 首次授权 | 全新 U 盘：扫码 → 选任务 → 模型可用 |
+| 首次授权 | 全新 U 盘：/login → 扫码 → 选任务 → 模型可用 |
 | 拒绝 | 授权页拒绝后收到 access_denied |
 | 超时 | 5 分钟未确认，提示重新开始 |
-| 刷新 | 记住模式下 access 过期自动刷新 |
-| 吊销 | 个人中心吊销后请求被拒并清理本地 |
+| 刷新 | 记住模式下 pi 自动刷新 |
+| 吊销 | 个人中心吊销后请求被拒并提示重新登录 |
 | 改密 | 改密后旧令牌立即失效 |
+| 额度不足 | 代理端点返回额度错误，界面提示 |
 | 断网 | 明确的网络错误提示 |
-| 窄终端 | 无二维码时的文本回退 |
 
 ## 待核实
 
 | 编号 | 事项 |
 |---|---|
-| V1 | pi 扩展的 provider 与凭据热更新能力 |
-| V2 | 命令注册与二维码输出的挂载点 |
-| V3 | Web 端二维码组件的复用方式 |
+| V1 | 扩展能否读回 pi 的当前凭据（决定 cst-oa.json 是否必要） |
+| V2 | 命令注册与刷新提示的最佳挂载点 |
