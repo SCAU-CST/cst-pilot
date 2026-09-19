@@ -35,7 +35,7 @@
 | 键 | 值示例 | 来源 | 用途描述 |
 |---|---|---|---|
 | `receivedAt` | `ISO 8601，UTC` | 接收端 | 时间基准，客户端时钟不可信 |
-| `ip` | `IPv4｜IPv6` | 接收端从连接获取 | 来源统计，处理方式见 [log/receiver.md](log/receiver.md) 议题 R6 |
+| `ip` | `IPv4｜IPv6` | 接收端从连接获取 | 来源统计，处理方式见 [log/receiver/SPEC.md](log/receiver/SPEC.md) 议题 R6 |
 
 ## 请求记录字段
 
@@ -340,7 +340,7 @@ keyFp = sha256("cst-pilot-telemetry:v1:" + apiKey) 前 16 位十六进制
 
 ## 议题
 
-数据定义相关的未决项，合并为一张表。传输与机制议题归 [log/sender/SPEC.md](log/sender/SPEC.md) 与 [log/receiver.md](log/receiver.md)。
+数据定义相关的未决项，合并为一张表。传输与机制议题归 [log/sender/SPEC.md](log/sender/SPEC.md) 与 [log/receiver/SPEC.md](log/receiver/SPEC.md)。
 
 | 组 | 编号 | 议题 | 状态与候选 |
 |---|---|---|---|

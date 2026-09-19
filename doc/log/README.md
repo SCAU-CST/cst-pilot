@@ -10,7 +10,7 @@ log 系统是工具包使用数据的收集管线：发送端在队员机器上�
 |---|---|
 | [schema.md](../schema.md) | 数据契约：请求记录与会话记录的字段与口径 |
 | [sender/SPEC.md](sender/SPEC.md) | 发送端：采集、上报、降级、配置 |
-| [receiver.md](receiver.md) | 接收端：接口、存储、报表 |
+| [receiver/SPEC.md](receiver/SPEC.md) | 接收端：接口、存储、报表 |
 
 ## 议题
 
@@ -18,6 +18,6 @@ log 系统是工具包使用数据的收集管线：发送端在队员机器上�
 |---|---|---|
 | S1–S3 | 数据字段与口径 | [schema.md](../schema.md) |
 | M1–M7 | 发送端机制 | [sender/SPEC.md](sender/SPEC.md) |
-| R1–R15 | 接收端接口、存储、鉴权、保留期、报表 | [receiver.md](receiver.md) |
+| R1–R15 | 接收端接口、存储、鉴权、保留期、报表 | [receiver/SPEC.md](receiver/SPEC.md) |
 
 已定结论写进正文，未决项留在各文档议题表。
