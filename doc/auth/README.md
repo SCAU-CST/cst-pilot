@@ -35,16 +35,15 @@ flowchart LR
     BR -->|"③ 确认设备与作用域"| NGX
     AG -->|"④ 设备码 / 令牌轮询"| NGX
     AG -->|"⑤ 任务 / 会话绑定"| NGX
-    AG -->|"⑥ 申请网关令牌"| NGX
-    AG -->|"⑦ 模型请求"| NGX
-    AG -.->|"⑨ 日志与遥测（M2）"| NGX
+    AG -->|"⑥ 模型请求（经 OA 代理）"| NGX
+    AG -.->|"⑧ 日志与遥测（M2）"| NGX
     NGX --> WEB
     NGX --> API
     NGX --> GW
-    API -->|"⑧ 签发网关令牌"| GW
+    API -->|"⑦ 转发模型请求（内部凭据）"| GW
     API --> DB1
     GW --> DB2
-    API -.->|"⑪ 附件（M2）"| OSS
+    API -.->|"⑩ 附件（M2）"| OSS
 ```
 
 文字拓扑（终端与不支持 Mermaid 的环境）：
@@ -66,20 +65,19 @@ flowchart LR
         │     ├─ /api/*     → 后端 FastAPI :8080（设备流 / 会话 / 任务 / 审计）
         │     └─ /v1、/ai/* → New API 网关 :3001（模型路由，OpenAI 兼容）
         │
-        │   后端 FastAPI ── ⑧ 签发短期网关令牌 ──► New API 网关 :3001
+        │   后端 FastAPI ── ⑦ 转发模型请求（内部凭据）──► New API 网关 :3001
         │        │                                       │
-        │        ▼ ⑩ 会话 / 审计 / 额度                   ▼ ⑩ 模型与额度数据
+        │        ▼ ⑨ 会话 / 审计 / 额度                   ▼ ⑨ 模型与额度数据
         │   RDS MySQL cst_oa                        RDS MySQL cstoa_ai
         │        │
-        │        └── ⑪ 附件（M2）─────────────────────► 对象存储 OSS
+        │        └── ⑩ 附件（M2）─────────────────────► 对象存储 OSS
         │
         └───────────────────────┬─────────────────────────────
                                 ▲ HTTPS（与应用服务器同一通道）
                                 │ ④ 设备码轮询 / 令牌刷新
                                 │ ⑤ 任务列表 / 创建会话（绑任务）
-                                │ ⑥ 申请短期网关令牌
-                                │ ⑦ 模型请求（OpenAI 兼容，流式）
-                                │ ⑨ 日志与遥测（M2）
+                                │ ⑥ 模型请求（经 OA 代理，OpenAI 兼容，流式）
+                                │ ⑧ 日志与遥测（M2）
         ┌───────────────────────┴─────────────────────────────
         │ 机主电脑（不可信环境）
         │   cst-pilot（从 U 盘运行）
@@ -102,12 +100,11 @@ flowchart LR
 | ③ | 手机 → 后端 | 确认或拒绝授权 | /api/oauth/device/decision |
 | ④ | agent → 后端 | 申请设备码、轮询令牌 | /api/oauth/device_authorization、/api/oauth/token |
 | ⑤ | agent → 后端 | 任务列表、创建会话（绑任务） | /api/agent/tasks、/api/agent/repair-sessions |
-| ⑥ | agent → 后端 | 申请短期网关令牌 | /api/agent/gateway-key |
-| ⑦ | agent → 服务器（nginx → 网关） | 模型请求（流式） | /v1/chat/completions |
-| ⑧ | 后端 → 网关 | 签发、删除网关令牌 | 网关管理 API（127.0.0.1:3001） |
-| ⑨ | agent → 后端 | 日志与遥测上报（M2） | /api/agent/telemetry/... |
-| ⑩ | 后端 / 网关 → RDS | 会话、审计、额度数据 | MySQL（cst_oa、cstoa_ai） |
-| ⑪ | 后端 → OSS | 附件上传（M2） | 对象存储 API |
+| ⑥ | agent → OA 代理 | 模型请求（OpenAI 兼容，流式） | /api/agent/llm/v1/* |
+| ⑦ | OA 代理 → 网关 | 内部凭据转发与用量记录 | 内网 127.0.0.1:3001 |
+| ⑧ | agent → 后端 | 日志与遥测上报（M2） | /api/agent/telemetry/... |
+| ⑨ | 后端 / 网关 → RDS | 会话、审计、额度数据 | MySQL（cst_oa、cstoa_ai） |
+| ⑩ | 后端 → OSS | 附件上传（M2） | 对象存储 API |
 
 失败与失效路径：
 
@@ -125,7 +122,7 @@ flowchart LR
 3. 授权主体是队员。机主不是 OA 用户，只出现在修机日志与同意书里。
 4. 默认每场修机授权一次。「记住 7 天」作为可选开关，默认关闭。
 5. 一个会话绑定一个任务，M1 即实现；日志、模型用量、审计都挂这次会话。
-6. 模型调用由 OA 签发短期网关令牌，用量计入队员个人额度并打「维修」标记。
+6. 模型调用经 OA 的 OpenAI 兼容代理，用量计入队员个人额度并打「维修」标记（方案 S）。
 7. TOTP 随本方案一并实现，设备授权页强制校验；丢失时由管理员重置。
 8. 所有令牌按「可能被窃取」设计：短有效期、最小作用域、随时吊销、刷新轮换。
 9. 服务器运维不共用本套凭据，独立立项，最后做。
@@ -209,7 +206,6 @@ flowchart LR
 | user_code | 6 位数字 | 服务端 | 5 分钟 | 使用、过期、连续失败 5 次 |
 | access_token | 无状态 HMAC | agent 内存 | 2 小时 | 到期、吊销设备、改密 |
 | refresh_token | 服务端哈希存储 | U 盘，明文 | 7 天 | 到期、吊销、轮换重放 |
-| gateway_key | New API 令牌 | agent 运行配置 | 最长 24 小时 | 到期、网关侧删除 |
 
 access_token 载荷：
 
@@ -258,11 +254,11 @@ access_token 载荷：
 
 ## 模型调用
 
-1. OA 用现有网关管理能力签发短期令牌，支持过期时间、模型白名单、额度上限。
-2. 令牌与修机会话绑定，最长 24 小时。
-3. 用量计入队员个人额度，打「维修」标记便于统计。
-4. 超出队员额度时拒绝签发。
-5. pi 侧以自定义 provider 接入，由扩展自动申请与刷新。
+1. OA 提供 OpenAI 兼容代理端点，pi 的 provider 指向该端点，凭据为 OA 访问令牌（方案 S）。
+2. 代理校验作用域与额度，转发到 New API，记录审计与用量（打「维修」标记）。
+3. 流式响应按 OpenAI 兼容格式透传。
+4. 超出队员额度时拒绝。
+5. pi 用原生 OAuth 机制自动刷新凭据，不下发网关令牌。
 
 ## 日志与遥测（M2）
 
@@ -295,7 +291,7 @@ M1：
 | DELETE | /api/agent/devices/{id} | OA 会话 | 移除设备 |
 | GET | /api/agent/tasks | access_token | 本人任务列表 |
 | POST | /api/agent/repair-sessions | access_token | 创建会话，绑定任务 |
-| POST | /api/agent/gateway-key | access_token | 签发短期网关令牌 |
+| ANY | /api/agent/llm/v1/* | access_token | OpenAI 兼容代理，转发 New API（流式） |
 
 M2 预留：
 
@@ -316,12 +312,13 @@ M2 预留：
 
 | 项 | 方案 |
 |---|---|
-| 形态 | 扩展，目录 agent/home/extensions/oauth/，不改 pi 内核 |
-| 命令 | /cst-login、/cst-logout、/cst-status、/cst-task |
-| 二维码 | TUI 显示二维码，Web 端显示跳转按钮 |
+| 形态 | 扩展，pi.registerProvider 注册自定义 OAuth provider，不改 pi 内核 |
+| 登录界面 | pi 原生设备码界面（可点击 URL + 6 位数字码） |
+| 凭据与刷新 | pi 的 auth.json（0600）与自动 refreshToken 回调 |
+| 命令 | /login 走 pi 原生流程；业务命令如 /cst-task 由扩展注册 |
 | 设备标识 | agent/home/device.json，首次运行生成 |
-| 凭据 | 沿用 pi 的 agent/home/auth.json 机制，只放 access token；refresh 仅在开启记住模式时写入 |
-| 刷新 | 扩展在请求前检查有效期，过期自动刷新或提示重新扫码 |
+| 令牌缓存 | agent/home/cst-oa.json（供 /api/agent/* 调用，0600） |
+| 二维码 | 暂不做；上游暂无提案，按 pi 贡献规范提交 issue 讨论 |
 
 实现细节见 [pi 扩展技术方案](pi-extension.md)。
 
@@ -372,6 +369,8 @@ M2 预留：
 | D8 | 审计保留期 | 180 天 |
 | D9 | 令牌签名密钥 | 复用 OA 现有密钥 |
 | D10 | 任务绑定阶段 | M1 即绑定 |
+| D11 | 模型接入路径 | 方案 S：OA 提供 OpenAI 兼容代理，pi provider 指向 OA |
+| D12 | 登录界面 | pi 原生设备码界面；二维码走上游 issue 讨论 |
 
 ## 不做
 
